@@ -1,0 +1,349 @@
+/* ---------- barra da apresentação (acima do dock; desce quando o dock some) ---------- */
+.present-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 100px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 6px 6px 14px;
+  border-radius: 18px;
+  background: var(--glass);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(20px) saturate(140%);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+  color: var(--text);
+  pointer-events: auto;
+  font-size: 12px;
+  transition: bottom 0.25s ease;
+}
+.present-bar.low {
+  bottom: 18px;
+}
+.present-bar button {
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+  font: 500 12px var(--font);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.present-bar button:hover {
+  border-color: var(--accent);
+}
+.present-bar button:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+.present-bar button.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--on-accent);
+}
+.pb-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-right: 4px;
+}
+.pb-who i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+.pb-who i.live {
+  background: #3ecf6e;
+  box-shadow: 0 0 0 3px rgba(62, 207, 110, 0.2);
+}
+.pb-who b {
+  white-space: nowrap;
+}
+.pb-who small {
+  color: var(--muted);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pb-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.pb-nav > span {
+  min-width: 52px;
+  text-align: center;
+  color: var(--muted);
+}
+.pb-nav button {
+  width: 30px;
+  padding: 6px 0;
+  font-size: 15px;
+  line-height: 1;
+}
+.pb-react {
+  display: flex;
+  gap: 2px;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--line);
+}
+.present-bar .pb-react button {
+  padding: 5px 6px;
+  border: 0;
+  background: transparent;
+  font-size: 16px;
+  transition: transform 0.12s;
+}
+.present-bar .pb-react button:hover {
+  transform: translateY(-2px) scale(1.15);
+}
+
+/* menu de escolher o que mostrar */
+.pb-menu {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  width: 440px;
+  padding: 10px;
+  border-radius: 18px;
+  background: var(--glass-strong);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(24px) saturate(140%);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  animation: drop 0.16s ease-out;
+}
+.pb-menu > button {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  padding: 12px 14px;
+  border-radius: 14px;
+  white-space: normal;
+  text-align: left;
+}
+.pb-menu small {
+  color: var(--muted);
+  font-weight: 400;
+}
+.pb-list {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  max-height: 300px;
+  overflow: auto;
+}
+.pb-list button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 12px;
+  text-align: left;
+}
+.pb-list img,
+.pb-list i {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 5px;
+  background: var(--line);
+}
+.pb-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pb-list .back {
+  justify-self: start;
+}
+.pb-site {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+}
+.pb-site input {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  color: var(--text);
+  font: 400 13px var(--font);
+  outline: none;
+}
+
+/* ---------- painel do encontro ---------- */
+.meet-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font-size: 13px;
+}
+.sheet.meet .row input {
+  flex: 1;
+}
+.meet-rooms {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.sheet .meet-rooms button {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  padding: 12px 14px;
+  border-radius: 14px;
+  text-align: left;
+}
+.meet-rooms small {
+  color: var(--muted);
+  font-weight: 400;
+}
+.sheet .meet-rooms button.on small {
+  color: inherit;
+  opacity: 0.75;
+}
+.sheet .meet-rooms button.on {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--on-accent);
+}
+.sheet input.pin {
+  width: 96px;
+  flex: none;
+  text-align: center;
+  font-size: 18px;
+  letter-spacing: 0.3em;
+  font-variant-numeric: tabular-nums;
+}
+.meet-error {
+  color: #e5484d;
+  font-size: 13px;
+}
+.meet-invite p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+.meet-pin {
+  margin: 8px 0;
+  font: 300 46px/1 var(--font);
+  letter-spacing: 0.25em;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.meet-people {
+  display: grid;
+  gap: 6px;
+}
+.meet-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  font-size: 13px;
+}
+.meet-person > i {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 0 1px var(--line);
+}
+.meet-person > span {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.meet-person small {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
+.meet-person small.live {
+  background: rgba(62, 207, 110, 0.18);
+  color: #3ecf6e;
+}
+.stage-site {
+  display: flex;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #fff;
+}
+/* dock: bolinha verde no Encontro quando está conectado */
+.dock button.live {
+  position: relative;
+}
+.dock button.live::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: calc(50% - 16px);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3ecf6e;
+  box-shadow: 0 0 0 2px var(--glass);
+}
+
+/* assistir pelo navegador: link + QR code */
+.meet-watch {
+  display: grid;
+  grid-template-columns: 1fr 132px;
+  gap: 18px;
+  align-items: center;
+}
+.meet-watch p {
+  margin: 0 0 10px;
+}
+.meet-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.meet-link code {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  font: 500 13px ui-monospace, 'Cascadia Code', Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
+}
+.meet-qr {
+  width: 132px;
+  height: 132px;
+  display: block;
+}
+.pb-watch {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  color: var(--muted);
+  white-space: nowrap;
+}

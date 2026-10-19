@@ -1,0 +1,186 @@
+/* ---------- provador: painel na direita, o boneco fica à esquerda no mundo ---------- */
+.wardrobe {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  width: min(440px, 45vw);
+  display: flex;
+  flex-direction: column;
+  border-radius: 22px;
+  background: var(--glass-strong);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(24px) saturate(140%);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  pointer-events: auto;
+  overflow: hidden;
+  animation: wd-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes wd-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+.wardrobe header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 22px 12px;
+}
+.wardrobe h2 {
+  margin: 0;
+  font-weight: 300;
+  font-size: 24px;
+}
+.wardrobe header small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.wardrobe button {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+  font: 500 12px var(--font);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+.wardrobe button:hover {
+  border-color: var(--accent);
+}
+.wardrobe button:active {
+  transform: scale(0.97);
+}
+.wardrobe button:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.wardrobe button.primary,
+.wardrobe button.on {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--on-accent);
+}
+
+.wd-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 18px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--line);
+}
+/* as 7 abas cabem nos 440px e esticam pra preencher; em janela estreita viram rolagem */
+.wd-tabs button {
+  flex: 1 0 auto;
+  padding: 7px 6px;
+}
+
+.wd-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 22px 18px;
+  scrollbar-width: thin;
+}
+.wd-body h3 {
+  margin: 16px 0 8px;
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.wd-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+.wd-body h3 + .wd-grid {
+  margin-top: 0;
+}
+.wd-grid button {
+  min-height: 44px;
+  border-radius: 14px;
+  text-align: center;
+  line-height: 1.2;
+}
+.wd-grid.presets button {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  min-height: 70px;
+  padding: 12px 8px;
+  font-size: 13px;
+}
+.dots {
+  display: flex;
+}
+.dots i {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--glass-strong);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.dots i + i {
+  margin-left: -5px;
+}
+
+.wd-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 6px;
+}
+.wardrobe .swatches button,
+.swatches .custom {
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+}
+.wardrobe .swatches button.on {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 2px var(--glass-strong),
+    0 0 0 4px var(--accent);
+}
+.swatches .custom {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  cursor: pointer;
+  background: conic-gradient(#e5484d, #f5c84c, #5ebd6e, #4aa8ff, #7b61ff, #d66bd0, #e5484d);
+}
+.swatches .custom input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.wardrobe footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 22px 18px;
+  border-top: 1px solid var(--line);
+}
+.wardrobe footer .hint {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 12px;
+}

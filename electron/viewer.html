@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0c0f" />
+    <title>Assistir · Workland</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b0c0f'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23d9b27c' stroke-width='3'/%3E%3C/svg%3E" />
+    <!-- Página servida pela sala do encontro (electron/meet.cjs): quem está na rede assiste o telão sem instalar nada. -->
+    <style>
+      :root {
+        --bg: #0b0c0f;
+        --glass: rgba(22, 24, 30, 0.74);
+        --line: rgba(255, 255, 255, 0.1);
+        --text: #f4f2ee;
+        --muted: rgba(244, 242, 238, 0.58);
+        --accent: #d9b27c;
+        --live: #3ecf6e;
+        --font: 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font);
+        overflow: hidden;
+        -webkit-font-smoothing: antialiased;
+        -webkit-tap-highlight-color: transparent;
+      }
+      button,
+      input {
+        font: inherit;
+        color: inherit;
+      }
+
+      /* ---------- telão ---------- */
+      #screen {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(120% 90% at 50% 40%, #15171c 0%, var(--bg) 70%);
+      }
+      #screen > canvas,
+      #screen > img,
+      #screen > video {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+        animation: show 0.25s ease-out;
+      }
+      #screen > iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #fff;
+      }
+      @keyframes show {
+        from {
+          opacity: 0;
+        }
+      }
+      .msg {
+        max-width: 560px;
+        padding: 24px;
+        text-align: center;
+      }
+      .msg h1 {
+        margin: 0 0 10px;
+        font-weight: 300;
+        font-size: clamp(28px, 5vw, 52px);
+        letter-spacing: -0.01em;
+      }
+      .msg p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.5;
+      }
+      .spin {
+        width: 28px;
+        height: 28px;
+        margin: 0 auto 18px;
+        border-radius: 50%;
+        border: 2px solid var(--line);
+        border-top-color: var(--accent);
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* ---------- barras (somem quando ninguém mexe) ---------- */
+      .bar {
+        position: fixed;
+        left: 50%;
+        z-index: 5;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        max-width: calc(100vw - 20px);
+        padding: 7px 8px 7px 14px;
+        border-radius: 18px;
+        background: var(--glass);
+        border: 1px solid var(--line);
+        backdrop-filter: blur(18px) saturate(140%);
+        -webkit-backdrop-filter: blur(18px) saturate(140%);
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+        font-size: 13px;
+        transform: translateX(-50%);
+        transition: opacity 0.35s, transform 0.35s;
+      }
+      .top {
+        top: max(12px, env(safe-area-inset-top));
+      }
+      .bottom {
+        bottom: max(12px, env(safe-area-inset-bottom));
+        padding: 6px;
+      }
+      body.idle .bar {
+        opacity: 0;
+        pointer-events: none;
+      }
+      body.idle .top {
+        transform: translate(-50%, -8px);
+      }
+      body.idle .bottom {
+        transform: translate(-50%, 8px);
+      }
+      .who {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .who i {
+        width: 8px;
+        height: 8px;
+        flex: none;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+      .who i.live {
+        background: var(--live);
+        box-shadow: 0 0 0 3px rgba(62, 207, 110, 0.2);
+      }
+      .who b {
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .who small,
+      .meta {
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .who small {
+        max-width: 28vw;
+      }
+      .meta {
+        padding-left: 10px;
+        border-left: 1px solid var(--line);
+        font-variant-numeric: tabular-nums;
+      }
+      .bar button,
+      .bar a {
+        display: inline-grid;
+        place-items: center;
+        min-width: 38px;
+        height: 38px;
+        padding: 0 12px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.05);
+        font-size: 13px;
+        font-weight: 500;
+        text-decoration: none;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .bar button:hover,
+      .bar a:hover {
+        border-color: var(--accent);
+      }
+      .bar .emo {
+        min-width: 38px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        font-size: 19px;
+        transition: transform 0.12s;
+      }
+      .bar .emo:hover {
+        transform: translateY(-2px) scale(1.15);
+      }
+      #reacts {
+        display: flex;
+        flex: none;
+      }
+      .bar #full,
+      .bar #sound,
+      .bar #open {
+        flex: none;
+      }
+      .bar .sep {
+        width: 1px;
+        height: 22px;
+        background: var(--line);
+      }
+      .hidden {
+        display: none !important;
+      }
+
+      /* reações subindo do pé da tela */
+      .react {
+        position: fixed;
+        bottom: 80px;
+        z-index: 4;
+        display: grid;
+        justify-items: center;
+        gap: 2px;
+        pointer-events: none;
+        animation: rise 2.6s ease-out forwards;
+      }
+      .react span {
+        font-size: 34px;
+      }
+      .react small {
+        padding: 1px 8px;
+        border-radius: 999px;
+        background: var(--glass);
+        color: var(--muted);
+        font-size: 11px;
+      }
+      @keyframes rise {
+        0% {
+          opacity: 0;
+          transform: translateY(10px) scale(0.6);
+        }
+        10% {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+        75% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+          transform: translateY(-220px) scale(1);
+        }
+      }
+
+      /* ---------- entrada ---------- */
+      #join {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        display: grid;
+        place-items: center;
+        padding: 20px;
+        background: radial-gradient(120% 90% at 50% 30%, #1a1d24 0%, var(--bg) 70%);
+      }
+      .card {
+        width: min(400px, 100%);
+        padding: 28px 26px 24px;
+        border-radius: 24px;
+        background: var(--glass);
+        border: 1px solid var(--line);
+        box-shadow: 0 40px 100px rgba(0, 0, 0, 0.45);
+      }
+      .card .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 22px;
+        color: var(--muted);
+        font-size: 13px;
+        letter-spacing: 0.04em;
+      }
+      .card .brand::before {
+        content: '';
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        border: 2px solid var(--accent);
+      }
+      .card h1 {
+        margin: 0 0 6px;
+        font-weight: 300;
+        font-size: 30px;
+      }
+      .card p {
+        margin: 0 0 22px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .card label {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 14px;
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .card input {
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.05);
+        font-size: 16px;
+        letter-spacing: normal;
+        text-transform: none;
+        outline: none;
+      }
+      .card input:focus {
+        border-color: var(--accent);
+      }
+      .card input.pin {
+        font-size: 22px;
+        letter-spacing: 0.4em;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+      .card .go {
+        width: 100%;
+        margin-top: 6px;
+        padding: 13px;
+        border: 0;
+        border-radius: 999px;
+        background: var(--accent);
+        color: #111;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .card .go:disabled {
+        opacity: 0.5;
+      }
+      .card .err {
+        min-height: 18px;
+        margin: 10px 0 0;
+        color: #ff8a8a;
+        font-size: 13px;
+        text-align: center;
+      }
+
+      @media (max-width: 640px) {
+        .who small,
+        .meta.people {
+          display: none;
+        }
+        .bar {
+          font-size: 12px;
+        }
+        .bar .emo {
+          min-width: 32px;
+          font-size: 18px;
+        }
+        .bar button,
+        .bar a {
+          padding: 0 10px;
+        }
+      }
+      /* celular em pé: slide 16:9 fica pequeno, uma dica discreta */
+      .turn {
+        display: none;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: calc(max(12px, env(safe-area-inset-bottom)) + 62px);
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        transition: opacity 0.35s;
+      }
+      body.idle .turn {
+        opacity: 0;
+      }
+      @media (orientation: portrait) and (max-width: 640px) {
+        body.wide .turn {
+          display: block;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main id="screen"></main>
+
+    <div class="bar top" id="top">
+      <span class="who"><i id="dot"></i><b id="who">Conectando</b><small id="title"></small></span>
+      <span class="meta" id="page"></span>
+      <span class="meta people" id="people"></span>
+    </div>
+
+    <div class="bar bottom" id="bottom">
+      <span id="reacts"></span>
+      <span class="sep"></span>
+      <button id="sound" class="hidden">Ligar som</button>
+      <a id="open" class="hidden" target="_blank" rel="noopener noreferrer">Abrir site</a>
+      <button id="full" title="Tela cheia">Tela cheia</button>
+    </div>
+
+    <div class="turn">gire o celular pra ver maior</div>
+
+    <div id="join" class="hidden">
+      <form class="card" id="form" autocomplete="off">
+        <div class="brand">workland</div>
+        <h1>Assistir a apresentação</h1>
+        <p id="room">na rede do escritório, sem instalar nada</p>
+        <label>Seu nome<input id="name" maxlength="40" placeholder="como o pessoal vai te ver" /></label>
+        <label id="pinRow">PIN<input id="pin" class="pin" inputmode="numeric" maxlength="4" placeholder="0000" /></label>
+        <button class="go" id="go">Assistir</button>
+        <div class="err" id="err"></div>
+      </form>
+    </div>
+
+    <script type="module">
+      const PDF = '__PDF_CHUNK__'
+      const REACTIONS = ['👏', '✋', '👍', '🔥', '😂', '❓']
+      const $ = (id) => document.getElementById(id)
+      const screenEl = $('screen')
+      const store = {
+        get: (k) => {
+          try {
+            return localStorage.getItem('wl.' + k) || ''
+          } catch {
+            return ''
+          }
+        },
+        set: (k, v) => {
+          try {
+            localStorage.setItem('wl.' + k, v)
+          } catch {}
+        },
+      }
+
+      const params = new URLSearchParams(location.search)
+      let pin = params.get('pin') || ''
+      let name = store.get('name')
+      let ws = null
+      let me = null
+      let presenter = null
+      let roomName = ''
+      let ended = false
+      let present = null
+      let shownKey = ''
+      let token = 0
+      let rtc = null
+      let iceQueue = []
+      const peers = new Map()
+
+      const send = (m) => ws?.readyState === 1 && ws.send(JSON.stringify(m))
+      const fileUrl = (id) => `/files/${id}?pin=${encodeURIComponent(pin)}`
+      const presenterName = () => (presenter && peers.get(presenter)?.name) || null
+
+      // ---------- entrar ----------
+
+      function showJoin(error = '') {
+        $('join').classList.remove('hidden')
+        $('name').value = name
+        $('pin').value = pin
+        $('pinRow').classList.toggle('hidden', !!params.get('pin') && !error)
+        $('err').textContent = error
+        ;(name ? $('pin') : $('name')).focus()
+      }
+      fetch('/info')
+        .then((r) => r.json())
+        .then((d) => {
+          roomName = d.name
+          $('room').textContent = d.by && !d.name.includes(d.by) ? `${d.name}, de ${d.by}` : d.name
+          document.title = `${d.name} · Workland`
+        })
+        .catch(() => {})
+      $('pin').addEventListener('input', (e) => (e.target.value = e.target.value.replace(/\D/g, '')))
+      $('form').addEventListener('submit', (e) => {
+        e.preventDefault()
+        name = $('name').value.trim()
+        pin = $('pin').value.trim()
+        if (pin.length !== 4) return ($('err').textContent = 'O PIN tem 4 números')
+        store.set('name', name)
+        $('go').disabled = true
+        connect()
+      })
+
+      function connect() {
+        const sock = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?pin=${encodeURIComponent(pin)}`)
+        ws = sock
+        let welcomed = false
+        sock.onopen = () => send({ t: 'hello', name: name || 'Convidado', viewer: true })
+        sock.onmessage = (e) => {
+          const m = JSON.parse(e.data)
+          if (m.t === 'welcome') welcomed = true
+          handle(m)
+        }
+        sock.onclose = () => {
+          if (ws !== sock) return
+          $('go').disabled = false
+          if (!welcomed && !me) return showJoin('Não deu pra entrar: confira o PIN')
+          if (ended) return
+          // caiu: tenta de novo sozinho
+          me = null
+          message('Reconectando...', 'a conexão com a sala caiu', true)
+          setTimeout(connect, 3000)
+        }
+      }
+
+      // ---------- mensagens da sala ----------
+
+      function handle(m) {
+        switch (m.t) {
+          case 'welcome':
+            me = m.id
+            roomName = m.name
+            presenter = m.presenter
+            peers.clear()
+            for (const p of m.peers) peers.set(p.id, p)
+            $('join').classList.add('hidden')
+            present = m.present
+            shownKey = ''
+            render()
+            return
+          case 'join':
+            peers.set(m.peer.id, m.peer)
+            return bar()
+          case 'peer':
+            peers.set(m.peer.id, { ...peers.get(m.peer.id), ...m.peer })
+            return bar()
+          case 'leave':
+            peers.delete(m.id)
+            if (rtc && rtc.from === m.id) closeRtc()
+            return bar()
+          case 'present':
+            if (m.by && m.by === me) return
+            present = m.state
+            return render()
+          case 'presenter':
+            presenter = m.id
+            return render(true)
+          case 'react':
+            return floatReaction(m.e, m.id === me ? 'você' : peers.get(m.id)?.name)
+          case 'rtc':
+            return onRtc(m.from, m.data)
+          case 'bye':
+            ended = true
+            closeRtc()
+            message('A apresentação terminou', 'obrigado por assistir')
+            present = null
+            return
+        }
+      }
+
+      // ---------- barra ----------
+
+      function bar() {
+        const s = present
+        const who = presenterName()
+        $('dot').className = who ? 'live' : ''
+        $('who').textContent = who ? `${who} apresentando` : roomName || 'Apresentação'
+        $('title').textContent = s?.title ?? ''
+        $('page').textContent = s && s.count > 1 ? `${s.index + 1} / ${s.count}` : ''
+        $('page').classList.toggle('hidden', !(s && s.count > 1))
+        const n = [...peers.values()].length + 1
+        $('people').textContent = n === 1 ? 'só você' : `${n} pessoas`
+        const video = s?.kind === 'media' && s.slides[s.index]?.video
+        $('sound').classList.toggle('hidden', !video)
+        const site = s?.kind === 'site' && /^https?:\/\//i.test(s.url)
+        $('open').classList.toggle('hidden', !site)
+        if (site) $('open').href = s.url
+      }
+
+      // ---------- o que vai no telão ----------
+
+      function message(title, sub, loading = false) {
+        const box = document.createElement('div')
+        box.className = 'msg'
+        if (loading) box.append(Object.assign(document.createElement('div'), { className: 'spin' }))
+        box.append(Object.assign(document.createElement('h1'), { textContent: title }))
+        if (sub) box.append(Object.assign(document.createElement('p'), { textContent: sub }))
+        mount(box)
+      }
+
+      let current = null
+      function mount(node) {
+        if (current === node) return
+        document.body.classList.toggle('wide', node.tagName !== 'DIV')
+        if (current?.tagName === 'VIDEO' && current !== node) {
+          current.pause()
+          if (!current.srcObject) current.removeAttribute('src')
+        }
+        screenEl.replaceChildren(node)
+        current = node
+      }
+
+      // o que muda o conteúdo (contagem de páginas chegando não redesenha)
+      const keyOf = (s) => {
+        if (!s) return 'nada'
+        if (s.kind === 'pdf') return `pdf:${s.src.file}:${s.index}`
+        if (s.kind === 'media') return `media:${s.slides[s.index]?.src.file}:${s.index}`
+        if (s.kind === 'window') return `window:${s.stamp}`
+        return `site:${s.url}`
+      }
+
+      async function render(force = false) {
+        bar()
+        const s = present
+        const key = keyOf(s) + (s ? '' : `:${presenter}`)
+        if (key === shownKey && !force) return
+        shownKey = key
+        const my = ++token
+        if (s?.kind !== 'window') closeRtc()
+        if (!s) return message(roomName || 'Apresentação', presenterName() ? `${presenterName()} vai mostrar algo daqui a pouco` : 'esperando alguém apresentar')
+        if (s.kind === 'pdf') {
+          if (!s.src.file) return message('Carregando...', s.title, true)
+          try {
+            const canvas = await pdfPage(s.src.file, s.index)
+            if (my === token) mount(canvas)
+            if (s.index + 1 < s.count) pdfPage(s.src.file, s.index + 1).catch(() => {})
+          } catch {
+            if (my === token) message('Não deu pra abrir o PDF', s.title)
+          }
+          return
+        }
+        if (s.kind === 'media') {
+          const slide = s.slides[s.index]
+          if (!slide?.src.file) return message('Carregando...', s.title, true)
+          if (slide.video) {
+            const v = document.createElement('video')
+            v.src = fileUrl(slide.src.file)
+            v.playsInline = true
+            v.muted = muted
+            v.autoplay = true
+            mount(v)
+            v.play().catch(() => {
+              v.muted = true
+              v.play().catch(() => {})
+            })
+          } else {
+            const img = new Image()
+            img.decoding = 'async'
+            img.src = fileUrl(slide.src.file)
+            img.onload = () => my === token && mount(img)
+            img.onerror = () => my === token && message('Não deu pra abrir a imagem', slide.name)
+          }
+          return
+        }
+        if (s.kind === 'window') {
+          message('Conectando na tela...', s.title, true)
+          return askStream()
+        }
+        if (s.kind === 'site') {
+          if (!/^https?:\/\//i.test(s.url)) return message(s.title, 'esse site está no PC de quem apresenta')
+          const f = document.createElement('iframe')
+          f.src = s.url
+          f.referrerPolicy = 'no-referrer'
+          f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups')
+          mount(f)
+        }
+      }
+
+      // ---------- PDF (o pdf.js vem do próprio Workland) ----------
+
+      let pdfLib = null
+      const pages = new Map()
+      function pageSize() {
+        const r = Math.min(2, window.devicePixelRatio || 1)
+        return [Math.min(2560, Math.round(innerWidth * r)), Math.min(1600, Math.round(innerHeight * r))]
+      }
+      async function pdfPage(file, i) {
+        const [w, h] = pageSize()
+        const key = `${file}#${i}@${w}x${h}`
+        if (!pages.has(key)) {
+          pdfLib ??= import(`/app/${PDF}`)
+          pages.set(key, (await pdfLib).renderPage(fileUrl(file), i, w, h))
+          pages.get(key).catch(() => pages.delete(key))
+          while (pages.size > 4) pages.delete(pages.keys().next().value)
+        }
+        return pages.get(key)
+      }
+      // girou o celular ou mudou o tamanho da janela: redesenha a página no tamanho novo
+      let resizeTimer = 0
+      addEventListener('resize', () => {
+        clearTimeout(resizeTimer)
+        resizeTimer = setTimeout(() => present?.kind === 'pdf' && render(true), 300)
+      })
+
+      // ---------- tela de app ao vivo (WebRTC direto de quem apresenta) ----------
+
+      function askStream() {
+        closeRtc()
+        if (presenter) send({ t: 'rtc', to: presenter, data: { want: true } })
+      }
+      function closeRtc() {
+        rtc?.pc.close()
+        rtc = null
+        iceQueue = []
+      }
+      async function onRtc(from, data) {
+        try {
+          if (data.sdp?.type === 'offer') {
+            closeRtc()
+            const pc = new RTCPeerConnection({ iceServers: [] })
+            rtc = { pc, from }
+            pc.onicecandidate = (e) => e.candidate && send({ t: 'rtc', to: from, data: { ice: e.candidate.toJSON() } })
+            pc.ontrack = (e) => {
+              const v = document.createElement('video')
+              v.muted = true
+              v.playsInline = true
+              v.autoplay = true
+              v.srcObject = e.streams[0] || new MediaStream([e.track])
+              mount(v)
+              v.play().catch(() => {})
+            }
+            await pc.setRemoteDescription(data.sdp)
+            for (const c of iceQueue.splice(0)) await pc.addIceCandidate(c).catch(() => {})
+            await pc.setLocalDescription(await pc.createAnswer())
+            send({ t: 'rtc', to: from, data: { sdp: pc.localDescription.toJSON() } })
+          } else if (data.ice) {
+            if (rtc?.pc.remoteDescription) await rtc.pc.addIceCandidate(data.ice).catch(() => {})
+            else iceQueue.push(data.ice)
+          }
+        } catch {}
+      }
+
+      // ---------- reações ----------
+
+      for (const e of REACTIONS) {
+        const b = document.createElement('button')
+        b.className = 'emo'
+        b.textContent = e
+        b.title = 'Reagir'
+        b.onclick = () => send({ t: 'react', e })
+        $('reacts').append(b)
+      }
+      function floatReaction(e, who) {
+        const el = document.createElement('div')
+        el.className = 'react'
+        el.style.left = `${12 + Math.random() * 76}%`
+        el.append(Object.assign(document.createElement('span'), { textContent: e }))
+        if (who) el.append(Object.assign(document.createElement('small'), { textContent: who }))
+        document.body.append(el)
+        setTimeout(() => el.remove(), 2700)
+      }
+
+      // ---------- som, tela cheia e barras que somem ----------
+
+      let muted = true
+      $('sound').onclick = () => {
+        muted = !muted
+        $('sound').textContent = muted ? 'Ligar som' : 'Tirar som'
+        if (current?.tagName === 'VIDEO' && !current.srcObject) current.muted = muted
+      }
+      const canFull = !!document.documentElement.requestFullscreen
+      $('full').classList.toggle('hidden', !canFull)
+      $('full').onclick = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}))
+      document.addEventListener('fullscreenchange', () => ($('full').textContent = document.fullscreenElement ? 'Sair da tela cheia' : 'Tela cheia'))
+      let idleTimer = 0
+      const wake = () => {
+        document.body.classList.remove('idle')
+        clearTimeout(idleTimer)
+        idleTimer = setTimeout(() => !$('join').classList.contains('hidden') || document.body.classList.add('idle'), 3500)
+      }
+      for (const ev of ['pointermove', 'pointerdown', 'keydown', 'touchstart']) addEventListener(ev, wake, { passive: true })
+      wake()
+
+      // ---------- começo ----------
+
+      message('Apresentação', 'conectando na sala...', true)
+      if (pin && name) connect()
+      else showJoin()
+    </script>
+  </body>
+</html>
