@@ -52,6 +52,8 @@ function useDesktopData() {
       return pc.appIcons().then((icons) => ui.setApps(withIcons(apps, icons)))
     })
     const offApps = pc.onApps(({ apps, icons }) => ui.setApps(withIcons(apps, icons)))
+    // Mac: clicou no Workland (ou Option+Q) com o app na frente do telão
+    const offReturn = pc.onReturn(() => leaveWindow())
     const poll = async () => mergeWindows(await pc.windows())
     poll()
     let t = 0
@@ -64,6 +66,7 @@ function useDesktopData() {
     return () => {
       clearInterval(id)
       offApps()
+      offReturn()
       offShortcuts()
     }
   }, [])

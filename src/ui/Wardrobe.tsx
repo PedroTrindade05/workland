@@ -56,8 +56,10 @@ export function Wardrobe() {
     const down = (e: KeyboardEvent) => {
       const el = document.activeElement
       if (el && ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) && (el as HTMLInputElement).type !== 'color') return
-      if (e.key.toLowerCase() === 'r' && !e.ctrlKey) keys.current.shuffle()
-      if (e.key.toLowerCase() === 'z' && e.ctrlKey) keys.current.undo()
+      // Cmd no Mac, Ctrl no Windows
+      const mod = e.ctrlKey || e.metaKey
+      if (e.key.toLowerCase() === 'r' && !mod) keys.current.shuffle()
+      if (e.key.toLowerCase() === 'z' && mod) keys.current.undo()
     }
     window.addEventListener('keydown', down)
     return () => window.removeEventListener('keydown', down)

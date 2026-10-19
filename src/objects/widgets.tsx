@@ -610,7 +610,7 @@ export function Weather({ item }: { item: Item }) {
         }
         const [desc, icon] = WEATHER[wx.code] ?? ['', '·']
         g.textAlign = 'left'
-        g.font = `${H * 0.42}px "Segoe UI Emoji", ${FONT}`
+        g.font = `${H * 0.42}px "Segoe UI Emoji", "Apple Color Emoji", ${FONT}`
         g.fillText(icon, W * 0.07, H * 0.62)
         g.fillStyle = theme.card.text
         g.font = `200 ${H * 0.42}px ${FONT}`

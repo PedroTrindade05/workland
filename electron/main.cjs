@@ -1,11 +1,13 @@
-// Processo principal: abre a janela do mundo e faz a ponte com o Windows
-// (atalhos da Área de Trabalho, apps do menu Iniciar, janelas abertas, status do sistema).
-const { app, BrowserWindow, Menu, ipcMain, shell, desktopCapturer, nativeImage, screen, dialog, protocol, net } = require('electron')
+// Processo principal: abre a janela do mundo e faz a ponte com o sistema
+// (atalhos da Área de Trabalho/Dock, apps instalados, janelas abertas, status do sistema).
+// Windows: win32.cjs (user32 + PowerShell). macOS: mac.cjs (CoreGraphics + Acessibilidade).
+const { app, BrowserWindow, Menu, ipcMain, shell, desktopCapturer, nativeImage, screen, dialog, protocol, net, globalShortcut } = require('electron')
 const { pathToFileURL } = require('url')
 
 // wlfile://local/C:/caminho -> arquivo local (fundo, quadros, plugins), com CORS liberado pra virar textura
 protocol.registerSchemesAsPrivileged([{ scheme: 'wlfile', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true, bypassCSP: true } }])
-const win32 = require('./win32.cjs')
+const MAC = process.platform === 'darwin'
+const native = MAC ? require('./mac.cjs') : require('./win32.cjs')
 const path = require('path')
 const fs = require('fs/promises')
 const fsWatch = require('fs').watch
@@ -33,8 +35,18 @@ app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','))
 let win
 
 function createWindow() {
-  // sem menu: o Alt não pode abrir barra nenhuma
-  Menu.setApplicationMenu(null)
+  // Windows: sem menu, o Alt não pode abrir barra nenhuma.
+  // Mac: o menu do topo é onde moram Cmd+Q, copiar/colar e tela cheia, então fica o básico.
+  Menu.setApplicationMenu(
+    MAC
+      ? Menu.buildFromTemplate([
+          { role: 'appMenu' },
+          { role: 'editMenu' },
+          { label: 'Visualizar', submenu: [{ role: 'togglefullscreen' }, { role: 'toggleDevTools' }] },
+          { role: 'windowMenu' },
+        ])
+      : null,
+  )
   win = new BrowserWindow({
     width: 1600,
     height: 900,
@@ -60,16 +72,19 @@ function createWindow() {
     win.once('ready-to-show', () => win.show())
   }
   watchShortcuts()
-  // o furo de 3px acompanha o tamanho da janela
-  if (!OFFSCREEN) {
-    const hole = () => win && !win.isDestroyed() && win32.setHole(worklandHwnd())
+  // o furo de 3px acompanha o tamanho da janela (só no Windows)
+  if (!OFFSCREEN && !MAC) {
+    const hole = () => win && !win.isDestroyed() && native.setHole(worklandHwnd())
     win.once('ready-to-show', () => setTimeout(hole, 50))
     for (const ev of ['resize', 'maximize', 'unmaximize', 'restore', 'move', 'enter-full-screen', 'leave-full-screen']) win.on(ev, () => setTimeout(hole, 30))
   }
-  // saiu do Workland (outro app ou fechou): as janelas usadas por dentro voltam como estavam
-  win.on('blur', () => win32.restoreTouched())
-  win.on('close', () => win32.restoreTouched())
-  if (DEV) win.loadURL('http://localhost:5199')
+  // saiu do Workland (outro app ou fechou): as janelas usadas por dentro voltam como estavam.
+  // No Mac a janela em uso fica NA FRENTE do Workland (ele perde o foco de propósito):
+  // ela só volta quando a pessoa clica no Workland de novo (ou Option+Q).
+  if (MAC) win.on('focus', () => native.isOverlaying() && returnFromWindow())
+  else win.on('blur', () => native.restoreTouched())
+  win.on('close', () => native.restoreTouched())
+  if (DEV) win.loadURL('http://127.0.0.1:5199')
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   win.webContents.on('before-input-event', (_e, input) => {
     if (input.type === 'keyDown' && input.key === 'F11') win.setFullScreen(!win.isFullScreen())
@@ -100,7 +115,10 @@ else {
   })
 }
 app.on('window-all-closed', () => app.quit())
-app.on('will-quit', () => win32.restoreTouched())
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
+  native.restoreTouched()
+})
 
 function worklandHwnd() {
   return Number(win.getNativeWindowHandle().readBigUInt64LE(0))
@@ -141,7 +159,8 @@ async function iconFor(p, key = p) {
   if (iconCache.has(key)) return iconCache.get(key)
   let url = null
   try {
-    const img = await app.getFileIcon(p, { size: 'large' })
+    // 'large' não existe no Mac (derruba o processo)
+    const img = await app.getFileIcon(p, { size: MAC ? 'normal' : 'large' })
     if (!img.isEmpty()) url = img.toDataURL()
   } catch {}
   iconCache.set(key, url)
@@ -155,6 +174,7 @@ const JUNK = /(uninstall|desinstal|remover|readme|leia-me|help|ajuda|documenta|m
 let appsCache = null
 async function listApps() {
   if (appsCache) return appsCache
+  if (MAC) return (appsCache = await native.listApps(JUNK))
   const startDirs = [
     path.join(process.env.ProgramData || 'C:\\ProgramData', 'Microsoft\\Windows\\Start Menu\\Programs'),
     path.join(process.env.APPDATA || '', 'Microsoft\\Windows\\Start Menu\\Programs'),
@@ -271,6 +291,7 @@ function knownPath(appId) {
 
 // ícones de 256px via shell (num PowerShell à parte, que não derruba o app se algo falhar)
 async function jumboIcons(paths) {
+  if (MAC) return native.jumboIcons(paths)
   const out = new Map()
   if (!paths.length) return out
   const list = path.join(os.tmpdir(), `workland-icons-${process.pid}.txt`)
@@ -344,12 +365,22 @@ ipcMain.handle('apps:launch', async (_e, a) => {
 // ---------- atalhos da Área de Trabalho ----------
 
 function shortcutDirs() {
+  if (MAC) return [app.getPath('desktop')]
   return [app.getPath('desktop'), path.join(process.env.PUBLIC || 'C:\\Users\\Public', 'Desktop')]
 }
 
+// Mac: o que está solto na Mesa (apps, links) + os apps fixos no Dock
+const SHORTCUT_EXT = MAC ? /\.(app|webloc|inetloc|url)$/i : /\.(lnk|url)$/i
 async function listShortcuts() {
   const seen = new Set()
   const out = []
+  if (MAC)
+    for (const { path: p, name } of await native.dockApps()) {
+      const key = name.toLowerCase()
+      if (key === 'workland' || seen.has(key)) continue
+      seen.add(key)
+      out.push({ id: p, name, path: p })
+    }
   for (const dir of shortcutDirs()) {
     let entries = []
     try {
@@ -358,8 +389,8 @@ async function listShortcuts() {
       continue
     }
     for (const e of entries) {
-      if (!e.isFile() || !/\.(lnk|url)$/i.test(e.name)) continue
-      const name = e.name.replace(/\.(lnk|url)$/i, '')
+      if (!(e.isFile() || (MAC && (e.isDirectory() || e.isSymbolicLink()))) || !SHORTCUT_EXT.test(e.name)) continue
+      const name = e.name.replace(SHORTCUT_EXT, '')
       const key = name.toLowerCase()
       if (key === 'workland' || seen.has(key)) continue
       seen.add(key)
@@ -417,7 +448,7 @@ ipcMain.handle('fs:places', () => {
   ].filter((x) => x.path)
 })
 
-const HIDDEN = /^(\.|desktop\.ini$|thumbs\.db$|ntuser|NTUSER|\$)/
+const HIDDEN = /^(\.|desktop\.ini$|thumbs\.db$|ntuser|NTUSER|\$|Icon\r$)/
 ipcMain.handle('fs:list', async (_e, dir) => {
   let entries = []
   try {
@@ -440,6 +471,8 @@ ipcMain.handle('fs:list', async (_e, dir) => {
     } catch {
       continue
     }
+    // no Mac um .app é pasta por dentro, mas pra pessoa é um programa: abre em vez de entrar
+    if (MAC && isDir && /\.app$/i.test(e.name)) isDir = false
     items.push({ name: e.name, path: full, isDir, size, mtime, ext: isDir ? '' : path.extname(e.name).slice(1).toLowerCase() })
   }
   items.sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name, 'pt-BR') : a.isDir ? -1 : 1))
@@ -468,10 +501,11 @@ function bigIconLater(p) {
 
 ipcMain.handle('fs:icon', async (_e, p, ext) => {
   // exe/lnk/url têm ícone próprio, o resto compartilha pelo tipo
-  const perFile = !ext || ['exe', 'lnk', 'url', 'ico'].includes(ext)
+  const perFile = !ext || ['exe', 'lnk', 'url', 'ico', 'app'].includes(ext)
   if (perFile && ext) return (await bigIconLater(p)) || iconFor(p)
   if (ext === 'dir') return (await bigIconLater(p)) || iconFor(p, 'ext:dir')
-  if (!byExt.has(ext)) byExt.set(ext, bigIconLater(p))
+  // Mac: a miniatura do arquivo seria o conteúdo dele; o ícone do tipo vem de um arquivo vazio
+  if (!byExt.has(ext)) byExt.set(ext, MAC ? native.typeIcon(ext) : bigIconLater(p))
   return (await byExt.get(ext)) || iconFor(p, `ext:${ext}`)
 })
 const byExt = new Map()
@@ -496,12 +530,16 @@ ipcMain.handle('fs:open', async (_e, p) => (await shell.openPath(p)) === '')
 ipcMain.handle('fs:reveal', (_e, p) => shell.showItemInFolder(p))
 ipcMain.handle('web:open', (_e, url) => shell.openExternal(url))
 
-// ---------- música tocando (controles de mídia do Windows) ----------
+// ---------- música tocando (controles de mídia do Windows; no Mac, Spotify ou Música) ----------
 
 let mediaBusy = null
 ipcMain.handle('media', async (_e, cmd) => {
   // um de cada vez: o PowerShell leva ~1s
   if (mediaBusy && cmd === 'status') return mediaBusy
+  if (MAC) {
+    mediaBusy = native.media(cmd).finally(() => setTimeout(() => (mediaBusy = null), 0))
+    return mediaBusy
+  }
   const script = path.join(__dirname, 'media.ps1').replace('app.asar', 'app.asar.unpacked')
   mediaBusy = run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Cmd', cmd], { timeout: 15000 })
     .then((out) => {
@@ -565,6 +603,8 @@ ipcMain.handle('setup:import', async () => {
 // ---------- abrir programa pelo .exe (cenas de trabalho) ----------
 
 ipcMain.handle('exe:launch', async (_e, p) => {
+  // Mac: a cena guarda o .app, que abre pelo Finder
+  if (MAC) return (await shell.openPath(p)) === ''
   try {
     spawn(p, [], { detached: true, stdio: 'ignore', cwd: path.dirname(p) }).unref()
     return true
@@ -617,9 +657,14 @@ ipcMain.handle('plugins:open', async () => {
 
 const NOT_APPS = /^(Program Manager|Configurações|Settings|Backstop Window|Input Occlusion Window|Tela de Bloqueio.*|Windows Default Lock Screen)$/
 ipcMain.handle('win:list', async () => {
+  // Mac: o capturador não traz ícone e custa caro; o ícone vem do .app dono da janela
+  if (MAC)
+    return Promise.all(
+      (await native.listWindows()).map(async (w) => ({ ...w, icon: w.exe ? (await bigIconLater(w.exe)) || (await iconFor(w.exe)) : null })),
+    )
   const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: true })
   const icons = new Map(sources.map((s) => [s.id, s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null]))
-  const all = win32.listWindows(win ? worklandHwnd() : 0).filter((w) => !NOT_APPS.test(w.name) && w.name !== 'Workland')
+  const all = native.listWindows(win ? worklandHwnd() : 0).filter((w) => !NOT_APPS.test(w.name) && w.name !== 'Workland')
   return Promise.all(
     all.map(async (w) => ({
       id: w.id,
@@ -631,20 +676,41 @@ ipcMain.handle('win:list', async () => {
   )
 })
 
-ipcMain.handle('win:focus', (_e, id) => win32.focus(id))
+ipcMain.handle('win:focus', (_e, id) => native.focus(id))
 
 // ---------- usar o app de dentro do telão ----------
 
-ipcMain.handle('win:prepare', (_e, id) => win32.prepare(id))
-// rect em pixels CSS dentro do Workland -> pixels físicos da tela
+ipcMain.handle('win:prepare', (_e, id) => native.prepare(id))
+// rect em pixels CSS dentro do Workland -> pixels físicos da tela (no Mac, pontos de tela)
 ipcMain.handle('win:fit', (_e, id, rect) => {
   if (!win) return null
   const cb = win.getContentBounds()
+  if (MAC) {
+    const ok = native.fit(id, { x: Math.round(cb.x + rect.x), y: Math.round(cb.y + rect.y), width: Math.round(rect.width), height: Math.round(rect.height) })
+    // a janela do app está na frente: Option+Q volta pro mundo sem precisar achar o Workland
+    if (ok && !globalShortcut.isRegistered('Alt+Q')) globalShortcut.register('Alt+Q', returnFromWindow)
+    return ok
+  }
   const phys = screen.dipToScreenRect(win, { x: Math.round(cb.x + rect.x), y: Math.round(cb.y + rect.y), width: Math.round(rect.width), height: Math.round(rect.height) })
-  return win32.fit(id, phys)
+  return native.fit(id, phys)
 })
-ipcMain.on('win:mouse', (_e, id, ev) => win32.mouse(id, ev))
-ipcMain.on('win:key', (_e, id, ev) => win32.key(id, ev))
+ipcMain.on('win:mouse', (_e, id, ev) => native.mouse(id, ev))
+ipcMain.on('win:key', (_e, id, ev) => native.key(id, ev))
+// saiu do telão: a janela usada volta pro lugar
+ipcMain.handle('win:release', () => {
+  if (MAC) globalShortcut.unregister('Alt+Q')
+  native.restoreTouched()
+})
+
+// Mac: voltou pro Workland com a janela do app ainda encaixada no telão
+function returnFromWindow() {
+  globalShortcut.unregister('Alt+Q')
+  native.restoreTouched()
+  if (!win || win.isDestroyed()) return
+  app.focus({ steal: true })
+  win.focus()
+  win.webContents.send('win:returned')
+}
 
 // ---------- sistema ----------
 
@@ -654,7 +720,7 @@ let disk = { used: 0, total: 0, at: 0 }
 async function diskUsage() {
   if (Date.now() - disk.at < 30000) return disk
   try {
-    const s = await fs.statfs(`${process.env.SystemDrive || 'C:'}\\`)
+    const s = await fs.statfs(MAC ? '/' : `${process.env.SystemDrive || 'C:'}\\`)
     disk = { total: s.blocks * s.bsize, used: (s.blocks - s.bfree) * s.bsize, at: Date.now() }
   } catch {}
   return disk
@@ -697,6 +763,8 @@ let updateReady = null
 
 async function setupUpdates() {
   if (!UPDATE_FEED && (!app.isPackaged || OFFSCREEN)) return
+  // as releases só têm o instalador do Windows (e no Mac a atualização exige app assinado)
+  if (MAC) return
   updater = require('electron-updater').autoUpdater
   if (UPDATE_FEED) {
     const cfg = path.join(app.getPath('userData'), 'update-test.yml')

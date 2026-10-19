@@ -1,5 +1,5 @@
 :root {
-  --font: 'Segoe UI Variable Display', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font: 'Segoe UI Variable Display', 'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --glass: rgba(14, 15, 19, 0.55);
   --glass-strong: rgba(14, 15, 19, 0.82);
   --line: rgba(255, 255, 255, 0.1);

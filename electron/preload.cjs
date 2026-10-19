@@ -4,6 +4,9 @@ const call = (ch) => (...args) => ipcRenderer.invoke(ch, ...args)
 
 contextBridge.exposeInMainWorld('pc', {
   native: true,
+  platform: process.platform,
+  // Mac: usar um app no telão traz a janela real pra frente, encaixada nele (sem repassar mouse/teclado)
+  overlay: process.platform === 'darwin',
   apps: call('apps:list'),
   appIcons: call('apps:icons'),
   launch: call('apps:launch'),
@@ -28,6 +31,12 @@ contextBridge.exposeInMainWorld('pc', {
   fit: call('win:fit'),
   mouse: (id, ev) => ipcRenderer.send('win:mouse', id, ev),
   key: (id, ev) => ipcRenderer.send('win:key', id, ev),
+  release: call('win:release'),
+  onReturn: (fn) => {
+    const h = () => fn()
+    ipcRenderer.on('win:returned', h)
+    return () => ipcRenderer.removeListener('win:returned', h)
+  },
   onApps: (fn) => {
     const h = (_e, data) => fn(data)
     ipcRenderer.on('apps:updated', h)

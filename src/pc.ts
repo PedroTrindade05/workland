@@ -31,6 +31,9 @@ export type Stats = {
 
 type Bridge = {
   native: boolean
+  platform: string
+  // true no Mac: a janela real vem pra frente encaixada no telão, em vez de ficar escondida atrás
+  overlay: boolean
   apps(): Promise<AppEntry[]>
   appIcons(): Promise<Record<string, string>>
   launch(a: AppEntry): Promise<boolean>
@@ -48,9 +51,12 @@ type Bridge = {
   windows(): Promise<WinEntry[]>
   focus(id: string): Promise<boolean>
   prepare(id: string): Promise<boolean>
-  fit(id: string, rect: { x: number; y: number; width: number; height: number }): Promise<Crop | null>
+  // Windows: quanto cortar da imagem. Mac: true se encaixou, false se só abriu o app fora (sem permissão)
+  fit(id: string, rect: { x: number; y: number; width: number; height: number }): Promise<Crop | boolean | null>
   mouse(id: string, ev: MouseEv): void
   key(id: string, ev: KeyEv): void
+  release(): Promise<void>
+  onReturn(fn: () => void): () => void
   onApps(fn: (d: { apps: AppEntry[]; icons: Record<string, string> }) => void): () => void
   stats(): Promise<Stats>
   media(cmd: 'status' | 'play' | 'next' | 'prev'): Promise<Media | null>
@@ -96,6 +102,8 @@ function fakeDir(dir: string): FsItem[] {
 
 const mock: Bridge = {
   native: false,
+  platform: 'web',
+  overlay: false,
   apps: async () => MOCK_APPS.map((name) => ({ id: name, name, appId: name, link: null, icon: null })),
   appIcons: async () => ({}),
   launch: async () => true,
@@ -134,6 +142,8 @@ const mock: Bridge = {
   fit: async () => null,
   mouse: () => {},
   key: () => {},
+  release: async () => {},
+  onReturn: () => () => {},
   onApps: () => () => {},
   media: async () => null,
   pickFolder: async () => null,

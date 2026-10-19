@@ -235,7 +235,7 @@ function LiveView() {
   const ready = !!rect && !!winId
 
   useEffect(() => {
-    if (!ready || !winId || !pc.native) return
+    if (!ready || !winId || !pc.native || pc.overlay) return
     let stream: MediaStream | null = null
     let alive = true
     navigator.mediaDevices
@@ -261,7 +261,8 @@ function LiveView() {
     if (!rect || !winId) return
     const t = setTimeout(async () => {
       const c = await pc.fit(winId, { x: rect.x, y: rect.y, width: rect.w, height: rect.h })
-      if (c) setCrop(c)
+      if (c === false) useUI.getState().say('Pra usar o app dentro do telão, libere o Workland em Ajustes > Privacidade e Segurança > Acessibilidade')
+      if (c && typeof c === 'object') setCrop(c)
     }, 60)
     return () => clearTimeout(t)
   }, [winId, rect?.x, rect?.y, rect?.w, rect?.h]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -269,7 +270,7 @@ function LiveView() {
   // mouse e rodinha
   useEffect(() => {
     const el = box.current
-    if (!el || !winId) return
+    if (!el || !winId || pc.overlay) return
     const st = { down: new Set<number>(), raf: 0, last: { u: 0.5, v: 0.5 }, pending: null as null | { u: number; v: number }, lastClick: 0, lastAt: { u: 0, v: 0 } }
     const uv = (e: MouseEvent) => {
       const r = el.getBoundingClientRect()
@@ -342,7 +343,7 @@ function UsingBar() {
   const winId = focus?.winId
 
   useEffect(() => {
-    if (!on || !winId) return
+    if (!on || !winId || pc.overlay) return
     const el = sink.current!
     const keep = () => setTimeout(() => useUI.getState().focus?.phase === 'on' && el.focus(), 0)
     el.focus()
@@ -390,7 +391,15 @@ function UsingBar() {
           <>
             Usando <b>{focus.title}</b>
             <span className="sep" />
-            mouse, rolagem e teclado vão pro app · <kbd>Esc</kbd> volta pro mundo
+            {pc.overlay ? (
+              <>
+                clique fora da janela ou <kbd>⌥ Q</kbd> volta pro mundo
+              </>
+            ) : (
+              <>
+                mouse, rolagem e teclado vão pro app · <kbd>Esc</kbd> volta pro mundo
+              </>
+            )}
           </>
         )}
         {focus.phase === 'out' && <>Voltando...</>}
@@ -537,7 +546,7 @@ function CommandBar() {
       apps
         .filter((a) => fold(a.name).includes(f) && !known.has(fold(a.name)))
         .slice(0, 20)
-        .forEach((a) => out.push({ key: `a:${a.id}`, icon: a.icon, glyph: '◇', title: a.name, sub: 'App do menu Iniciar · Enter abre aqui dentro', run: () => launchApp(a) }))
+        .forEach((a) => out.push({ key: `a:${a.id}`, icon: a.icon, glyph: '◇', title: a.name, sub: `${pc.platform === 'darwin' ? 'App instalado' : 'App do menu Iniciar'} · Enter abre aqui dentro`, run: () => launchApp(a) }))
     }
     if (f && !looksUrl)
       out.push({ key: 'search', icon: null, glyph: '⌕', title: `Pesquisar "${raw}"`, sub: 'Abre uma tela do Google na sua frente', run: () => spawnWebScreen(normalizeUrl(raw)) })
@@ -713,14 +722,14 @@ export function Hud() {
       if (ui.focus || !useRooms.getState().ready) return
       if (e.key === 'Escape' && ui.panel) return ui.setPanel(null)
       if (e.key === 'Escape' && ui.watching) return ui.setWatching(false)
-      if (e.key === '/' || (e.ctrlKey && e.key.toLowerCase() === 'k')) {
+      if (e.key === '/' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
         e.preventDefault()
         ui.setCmdOpen(true)
         return
       }
       if (ui.cmdOpen || ui.themeOpen || ui.panel || ui.editItem) return
       const k = e.key.toLowerCase()
-      if (k === 'b' && !e.ctrlKey) {
+      if (k === 'b' && !e.ctrlKey && !e.metaKey) {
         if (document.pointerLockElement) document.exitPointerLock()
         useRooms.getState().setBuild(!useRooms.getState().build)
         return
@@ -734,7 +743,7 @@ export function Hud() {
         ui.setThemeOpen(true)
       }
       const slot = DOCK.find((s) => s.key === e.key)
-      if (slot && !e.ctrlKey && !e.altKey) slot.run()
+      if (slot && !e.ctrlKey && !e.altKey && !e.metaKey) slot.run()
     }
     window.addEventListener('keydown', down)
     return () => window.removeEventListener('keydown', down)

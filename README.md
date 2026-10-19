@@ -1,6 +1,6 @@
 # Workland
 
-Área de trabalho em 3D pro Windows. Um salão circular com os seus apps, pastas, janelas abertas e o status do PC nas paredes, dentro de um ambiente à sua escolha.
+Área de trabalho em 3D pro Windows e macOS. Um salão circular com os seus apps, pastas, janelas abertas e o status do PC nas paredes, dentro de um ambiente à sua escolha.
 
 ## Rodar
 
@@ -15,6 +15,26 @@ npm run release  # gera e publica a versão no GitHub (ver "Lançar uma versão"
 O instalador instala só pro usuário (sem administrador) em `%LOCALAPPDATA%\Programs\Workland` e cria atalho na Área de Trabalho e no menu Iniciar. Depois de mudar o código, é só rodar `npm run dist` e executar o instalador de novo.
 
 Se o `electron-builder` reclamar de "Cannot create symbolic link" ao extrair o `winCodeSign`, extraia o `.7z` dele manualmente em `%LOCALAPPDATA%\electron-builder\Cache\winCodeSign\winCodeSign-2.6.0` (os erros são só de arquivos do macOS).
+
+## macOS
+
+Os mesmos `npm install`, `npm start` e `npm run dev` funcionam no Mac. `npm run dist:mac` gera o `.dmg` (arm64 e Intel) em `release/`, sem assinatura (na primeira abertura: botão direito no app > Abrir).
+
+O lado nativo do Mac fica em `electron/mac.cjs` (CoreGraphics e Acessibilidade via koffi); o `main.cjs` escolhe entre ele e o `win32.cjs` pela plataforma. O que muda:
+
+- **Aplicativos**: o que está em `/Applications`, `/System/Applications` e `~/Applications`, com o nome traduzido do Finder e ícone em alta (QuickLook).
+- **Atalhos**: os apps fixos no Dock mais apps e links (`.webloc`) soltos na Mesa.
+- **Usar um app no telão**: em vez de esconder a janela atrás do Workland e repassar mouse/teclado, a janela real vem pra frente encaixada exatamente em cima do telão. Clicar no Workland, fora dela, ou `Option+Q` devolve a janela pro lugar e volta pro mundo.
+- **Música**: Spotify ou o app Música (AppleScript).
+- **Sistema**: o painel abre o Monitor de Atividade. `Cmd` faz o papel do `Ctrl` nos atalhos (desfazer, duplicar, busca com `Cmd+K`).
+- Sem atualização automática por enquanto (as releases só têm o instalador do Windows e o Mac exige app assinado).
+
+Permissões que o macOS pede (Ajustes do Sistema > Privacidade e Segurança). Em `npm start`/`npm run dev` elas valem pro app de onde você rodou o comando (Terminal, iTerm, VS Code), no instalado pro próprio Workland:
+
+- **Gravação de Tela**: telões ao vivo e nomes das janelas.
+- **Acessibilidade**: encaixar a janela no telão. Sem ela, entrar numa tela só abre o app fora, na frente.
+- **Automação** (Spotify/Música): o widget de música.
+- **Rede local**: o Encontro.
 
 ## Atualização automática
 

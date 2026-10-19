@@ -3,10 +3,11 @@
   "version": "0.7.1",
   "main": "electron/main.cjs",
   "scripts": {
-    "dev": "concurrently -k -n vite,app -c magenta,cyan \"vite\" \"wait-on tcp:5199 && electron . --dev\"",
+    "dev": "concurrently -k -n vite,app -c magenta,cyan \"vite\" \"wait-on tcp:127.0.0.1:5199 && electron . --dev\"",
     "build": "vite build",
     "start": "vite build && electron .",
     "dist": "vite build && electron-builder --win --publish never",
+    "dist:mac": "vite build && electron-builder --mac --publish never",
     "release": "vite build && electron-builder --win --publish always"
   },
   "keywords": [],
@@ -52,8 +53,6 @@
       "dist/**",
       "electron/**",
       "package.json",
-      "!node_modules/koffi/build/koffi/{darwin,freebsd,linux,musl,openbsd}*/**",
-      "!node_modules/koffi/build/koffi/win32_{arm64,i386}/**",
       "!node_modules/koffi/src/**"
     ],
     "asarUnpack": [
@@ -72,7 +71,33 @@
       "target": [
         "nsis"
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "files": [
+        "!node_modules/koffi/build/koffi/{darwin,freebsd,linux,musl,openbsd}*/**",
+        "!node_modules/koffi/build/koffi/win32_{arm64,i386}/**"
+      ]
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon-mac.png",
+      "category": "public.app-category.productivity",
+      "files": [
+        "!node_modules/koffi/build/koffi/{win32,freebsd,linux,musl,openbsd}*/**",
+        "!electron/*.ps1"
+      ],
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "O Workland procura e cria encontros com colegas na rede local.",
+        "NSAppleEventsUsageDescription": "O Workland mostra e controla a música tocando no Spotify ou no app Música.",
+        "NSScreenCaptureUsageDescription": "O Workland mostra as janelas abertas ao vivo nos telões."
+      }
     },
     "nsis": {
       "oneClick": true,

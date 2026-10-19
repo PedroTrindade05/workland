@@ -202,11 +202,13 @@ export function BuildBar() {
       const st = s()
       const it = currentRoom()?.items.find((i) => i.id === st.selected)
       const k = e.key.toLowerCase()
-      if (e.ctrlKey && k === 'z') return void (e.preventDefault(), e.shiftKey ? st.redo() : st.undo())
-      if (e.ctrlKey && k === 'y') return void (e.preventDefault(), st.redo())
+      // Cmd no Mac, Ctrl no Windows
+      const mod = e.ctrlKey || e.metaKey
+      if (mod && k === 'z') return void (e.preventDefault(), e.shiftKey ? st.redo() : st.undo())
+      if (mod && k === 'y') return void (e.preventDefault(), st.redo())
       if (k === 'escape') return void (st.selected ? st.select(null) : st.setBuild(false))
       if (!it) return
-      if (e.ctrlKey && k === 'd') return void (e.preventDefault(), st.duplicate(it.id))
+      if (mod && k === 'd') return void (e.preventDefault(), st.duplicate(it.id))
       if (k === 'delete' || k === 'backspace') return void st.remove(it.id)
       if (k === 'q') st.update(it.id, { rotY: it.rotY + Math.PI / 12 })
       if (k === 'e') st.update(it.id, { rotY: it.rotY - Math.PI / 12 })

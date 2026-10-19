@@ -119,7 +119,12 @@ function Lobby() {
             Criar encontro
           </button>
         </div>
-        <p className="muted">Na primeira vez o Windows pergunta se o Workland pode usar a rede: escolha Permitir em redes privadas. Cada colega precisa do Workland instalado.</p>
+        <p className="muted">
+          {pc.platform === 'darwin'
+            ? 'Na primeira vez o macOS pergunta se o Workland pode achar dispositivos na rede local: escolha Permitir.'
+            : 'Na primeira vez o Windows pergunta se o Workland pode usar a rede: escolha Permitir em redes privadas.'}{' '}
+          Cada colega precisa do Workland instalado.
+        </p>
       </section>
       <section>
         <h3>Entrar no de alguém</h3>

@@ -55,6 +55,8 @@ export function leaveWindow() {
   const f = useUI.getState().focus
   if (!f || f.phase === 'out') return
   useUI.getState().setFocus({ ...f, phase: 'out' })
+  // Mac: a janela estava na frente, encaixada no telão: volta pro lugar dela
+  if (pc.overlay) pc.release()
 }
 
 // abre um app/arquivo e, quando a janela aparecer, entra nela

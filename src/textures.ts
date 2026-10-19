@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { Theme } from './themes'
 
-export const FONT = '"Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif'
+export const FONT = '"Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif'
 
 export function canvasTexture(w: number, h: number) {
   const c = document.createElement('canvas')

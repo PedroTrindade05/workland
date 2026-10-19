@@ -11,6 +11,9 @@ import { openShortcut } from '../inside'
 import { ArcWall } from '../world/ArcWall'
 import type { Theme } from '../themes'
 
+// no Mac a parede junta os apps fixos no Dock e o que está solto na Mesa
+const WHERE = pc.platform === 'darwin' ? 'no Dock e na Mesa' : 'na sua Área de Trabalho'
+
 const R = 24
 const SPAN = 100
 const PITCH = 2.3
@@ -97,7 +100,7 @@ export function ShortcutWall({ item }: { item: Item }) {
   const height = Y0 + (rows - 1) * ROW + SIZE / 2 + 0.6
   return (
     <group>
-      <ArcWall r={R} span={SPAN} title={String(item.props.title || 'Atalhos')} theme={theme} height={height} sub={shortcuts.length ? `${shortcuts.length} na sua Área de Trabalho` : 'nenhum atalho na Área de Trabalho'} />
+      <ArcWall r={R} span={SPAN} title={String(item.props.title || 'Atalhos')} theme={theme} height={height} sub={shortcuts.length ? `${shortcuts.length} ${WHERE}` : `nenhum atalho ${WHERE}`} />
       {shortcuts.map((s, i) => (
         <Tile key={s.id} item={s} pos={spots[i]} theme={theme} />
       ))}

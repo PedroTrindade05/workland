@@ -8,6 +8,8 @@ import { useHoverable, useHovered } from '../interact'
 import { ArcWall } from '../world/ArcWall'
 import type { Theme } from '../themes'
 
+const MAC = pc.platform === 'darwin'
+
 // tela curva acompanhando a parede (um painel plano atravessava a parede nas pontas)
 const WALL_R = 24
 const SPAN = 40
@@ -108,7 +110,7 @@ function draw(c: HTMLCanvasElement, s: State, theme: Theme) {
   }
   g.fillStyle = muted
   g.font = `400 30px ${FONT}`
-  g.fillText('clique pra abrir o Gerenciador de Tarefas', PAD, CH - PAD + 10)
+  g.fillText(MAC ? 'clique pra abrir o Monitor de Atividade' : 'clique pra abrir o Gerenciador de Tarefas', PAD, CH - PAD + 10)
 
   // divisória vertical
   const rx = PAD + leftW + 90
@@ -267,10 +269,10 @@ export function SystemPanel({ item }: { item: Item }) {
   const handlers = useHoverable({
     id: 'system',
     title: 'Painel do sistema',
-    verb: 'Abrir o Gerenciador de Tarefas',
+    verb: MAC ? 'Abrir o Monitor de Atividade' : 'Abrir o Gerenciador de Tarefas',
     run: () => {
-      useUI.getState().say('Abrindo o Gerenciador de Tarefas')
-      pc.open('C:\\Windows\\System32\\Taskmgr.exe')
+      useUI.getState().say(MAC ? 'Abrindo o Monitor de Atividade' : 'Abrindo o Gerenciador de Tarefas')
+      pc.open(MAC ? '/System/Applications/Utilities/Activity Monitor.app' : 'C:\\Windows\\System32\\Taskmgr.exe')
     },
   })
   return (
