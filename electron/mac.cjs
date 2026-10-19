@@ -25,8 +25,9 @@ const CFNumberGetValue = CF.func('bool CFNumberGetValue(void *n, int type, _Out_
 const CFBooleanGetValue = CF.func('bool CFBooleanGetValue(void *b)')
 const CFRetain = CF.func('void *CFRetain(void *x)')
 const CFRelease = CF.func('void CFRelease(void *x)')
-const kCFBooleanTrue = CF.symbol('kCFBooleanTrue', 'void *')
-const kCFBooleanFalse = CF.symbol('kCFBooleanFalse', 'void *')
+// symbol() devolve o endereço da variável global; o CFBoolean é o valor guardado nela
+const kCFBooleanTrue = koffi.decode(CF.symbol('kCFBooleanTrue', 'void *'), 'void *')
+const kCFBooleanFalse = koffi.decode(CF.symbol('kCFBooleanFalse', 'void *'), 'void *')
 
 const CGWindowListCopyWindowInfo = CG.func('void *CGWindowListCopyWindowInfo(uint32 opt, uint32 rel)')
 
