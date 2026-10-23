@@ -1,5 +1,5 @@
-// Chamadas diretas ao user32 (via koffi): listar janelas, e usar um app "de dentro" do telão 3D
-// mandando mouse e teclado pra janela real, que fica escondida atrás do Workland.
+// Chamadas diretas ao user32 (via koffi): listar janelas, encaixar o app real em cima do telão 3D
+// (o encaixe por cima fica em overlay(); o repasse de mouse e teclado abaixo é do modo antigo, com a janela atrás)
 const koffi = require('koffi')
 
 const user32 = koffi.load('user32.dll')
@@ -45,6 +45,8 @@ const GetKeyboardState = user32.func('bool __stdcall GetKeyboardState(_Out_ uint
 const SetKeyboardState = user32.func('bool __stdcall SetKeyboardState(uint8 *state)')
 const MapVirtualKeyW = user32.func('uint __stdcall MapVirtualKeyW(uint code, uint type)')
 const SetWindowRgn = user32.func('int __stdcall SetWindowRgn(intptr hWnd, intptr rgn, bool redraw)')
+const GetWindowRgnBox = user32.func('int __stdcall GetWindowRgnBox(intptr hWnd, _Out_ RECT *rect)')
+const GetForegroundWindow = user32.func('intptr __stdcall GetForegroundWindow()')
 const GetWindowDpiAwarenessContext = user32.func('intptr __stdcall GetWindowDpiAwarenessContext(intptr hWnd)')
 const SetThreadDpiAwarenessContext = user32.func('intptr __stdcall SetThreadDpiAwarenessContext(intptr ctx)')
 const EnumWindowsProc = koffi.proto('bool __stdcall EnumWindowsProc(intptr hwnd, intptr lParam)')
@@ -259,6 +261,101 @@ function fit(sourceId, rect) {
   }
 }
 
+// ---------- a janela de verdade por cima do telão ----------
+// A área útil do app fica exatamente onde o telão aparece no Workland (pixel a pixel)
+// e o resto da janela (barra de título, bordas, sombra) é cortado com uma região.
+
+const over = { h: 0, pid: 0, seen: false }
+
+function pidOf(h) {
+  const pid = [0]
+  GetWindowThreadProcessId(h, pid)
+  return pid[0]
+}
+
+// corta a janela na área útil, no máximo do tamanho pedido (app com tamanho mínimo maior fica cortado, não vaza)
+function clipToClient(h, maxW, maxH) {
+  const wrP = {}
+  GetWindowRect(h, wrP)
+  inWindowDpi(h, () => {
+    const wr = {}
+    const cr = {}
+    const pt = { x: 0, y: 0 }
+    GetWindowRect(h, wr)
+    GetClientRect(h, cr)
+    ClientToScreen(h, pt)
+    // app antigo enxerga coordenadas "virtuais": converte o tamanho pedido pra escala dele
+    const k = (wr.right - wr.left) / Math.max(1, wrP.right - wrP.left)
+    const x = pt.x - wr.left
+    const y = pt.y - wr.top
+    const w = Math.min(cr.right, Math.round(maxW * k))
+    const hh = Math.min(cr.bottom, Math.round(maxH * k))
+    SetWindowRgn(h, CreateRectRgn(x, y, x + w, y + hh), true)
+  })
+}
+
+// rect em pixels físicos da tela; activate = trazer pro primeiro plano (no teste escondido não)
+function overlay(sourceId, rect, activate) {
+  const h = hwndOf(sourceId)
+  if (!h || !IsWindow(h)) return null
+  if (over.h && over.h !== h) endOverlay()
+  remember(h)
+  if (IsIconic(h) || IsZoomed(h)) ShowWindow(h, SW.SHOWNOACTIVATE)
+  SetWindowRgn(h, 0, false)
+  // várias vezes: trocar de monitor muda a escala e as bordas do app
+  for (let i = 0; i < 3; i++) {
+    const f = frameOf(h)
+    SetWindowPos(h, 0, rect.x - f.offX, rect.y - f.offY, rect.width + f.extraW, rect.height + f.extraH, SWP.NOACTIVATE)
+  }
+  clipToClient(h, rect.width, rect.height)
+  if (over.h !== h) Object.assign(over, { h, pid: pidOf(h), seen: false })
+  if (activate) forceForeground(h)
+  return placed(h)
+}
+
+// onde a área visível do app ficou (pixels físicos), pra conferir o encaixe
+function placed(h) {
+  const pt = { x: 0, y: 0 }
+  const cr = {}
+  const wr = {}
+  const box = {}
+  ClientToScreen(h, pt)
+  GetClientRect(h, cr)
+  GetWindowRect(h, wr)
+  const clip = GetWindowRgnBox(h, box) ? { x: wr.left + box.left, y: wr.top + box.top, width: box.right - box.left, height: box.bottom - box.top } : null
+  return { client: { x: pt.x, y: pt.y, width: cr.right, height: cr.bottom }, clip }
+}
+
+// quem está em primeiro plano agora: o app (ou um menu/diálogo dele), o Workland, outro app, ou o app fechou
+function overlayState(worklandHwnd) {
+  if (!over.h) return 'none'
+  if (!IsWindow(over.h)) return 'gone'
+  const fg = GetForegroundWindow()
+  if (!fg) return 'app'
+  if (fg === worklandHwnd) return over.seen ? 'workland' : 'app'
+  if (fg === over.h || pidOf(fg) === over.pid) {
+    over.seen = true
+    return 'app'
+  }
+  return 'other'
+}
+const overlayActive = () => !!over.h
+
+// tira o corte e devolve a janela pro lugar e tamanho de antes
+function endOverlay() {
+  const h = over.h
+  over.h = 0
+  if (!h || !IsWindow(h)) return
+  SetWindowRgn(h, 0, true)
+  const wp = touched.get(h)
+  if (!wp) return
+  touched.delete(h)
+  const n = wp.rcNormalPosition
+  SetWindowPos(h, 0, n.left, n.top, n.right - n.left, n.bottom - n.top, SWP.NOZORDER | SWP.NOACTIVATE)
+  if (wp.showCmd === 2) ShowWindow(h, SW.SHOWMINNOACTIVE)
+  else if (wp.showCmd === 3) ShowWindow(h, SW.SHOWMAXIMIZED)
+}
+
 const WM = { MOVE: 0x200, LDOWN: 0x201, LUP: 0x202, LDBL: 0x203, RDOWN: 0x204, RUP: 0x205, RDBL: 0x206, MDOWN: 0x207, MUP: 0x208, WHEEL: 0x20a, HWHEEL: 0x20e, KEYDOWN: 0x100, KEYUP: 0x101, CHAR: 0x102 }
 const MK = { 0: 0x1, 1: 0x10, 2: 0x2 }
 const held = new Map()
@@ -401,4 +498,4 @@ function key(sourceId, ev) {
   return true
 }
 
-module.exports = { isRealWindow, listWindows, focus, setHole, prepare, fit, restoreTouched, mouse, key }
+module.exports = { isRealWindow, listWindows, focus, setHole, prepare, fit, restoreTouched, mouse, key, overlay, overlayState, overlayActive, endOverlay, placed, hwndOf }

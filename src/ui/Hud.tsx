@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { pc, type Crop, type UpdateInfo } from '../pc'
+import { pc, type UpdateInfo } from '../pc'
 import { spawnWebScreen, teleport, useUI } from '../store'
 import { goToKind } from '../objects/nav'
 import { useCurrentRoom, useRooms } from '../rooms'
@@ -217,201 +217,63 @@ function Crosshair() {
 }
 
 // ---------- usando um app de dentro do telão ----------
-// O teclado vai pro app: texto chega por um campo escondido (assim acento e AltGr funcionam)
-// e as teclas especiais/atalhos vão como teclas. Esc devolve o controle pro mundo.
-
-const EXTENDED = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown', 'Insert', 'Delete', 'NumpadEnter', 'ControlRight', 'AltRight', 'NumpadDivide'])
-const MODIFIERS = new Set(['Control', 'Shift', 'Alt', 'Meta', 'AltGraph', 'CapsLock'])
-
-// imagem nítida do app em uso, exatamente em cima do telão 3D. A janela real fica atrás do Workland
-// com a área útil do mesmo tamanho em pixels, então é 1:1, sem borrão. Mouse e rodinha vão pro app.
-function LiveView() {
+// O app de verdade fica por cima do Workland, com a área útil exatamente em cima do telão
+// (a barra de título e as bordas são cortadas). Mouse e teclado vão direto pra ele, sem repasse.
+// Clicar fora dele, Alt+Q, trocar de app ou fechar o app volta pro mundo.
+function RealWindow() {
   const focus = useUI((s) => s.focus)
   const rect = focus?.phase === 'on' ? focus.rect : undefined
   const winId = focus?.winId
-  const video = useRef<HTMLVideoElement>(null)
-  const box = useRef<HTMLDivElement>(null)
-  const [crop, setCrop] = useState<Crop | null>(null)
-  const ready = !!rect && !!winId
+  const on = !!rect && !!winId
 
-  useEffect(() => {
-    if (!ready || !winId || !pc.native) return
-    let stream: MediaStream | null = null
-    let alive = true
-    navigator.mediaDevices
-      .getUserMedia({
-        audio: false,
-        video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: winId, maxWidth: 3840, maxHeight: 2160, maxFrameRate: 60 } },
-      } as unknown as MediaStreamConstraints)
-      .then((s) => {
-        if (!alive) return s.getTracks().forEach((t) => t.stop())
-        stream = s
-        if (video.current) video.current.srcObject = s
-      })
-      .catch(() => {})
-    return () => {
-      alive = false
-      stream?.getTracks().forEach((t) => t.stop())
-      setCrop(null)
-    }
-  }, [ready, winId])
-
-  // janela real do mesmo tamanho (em pixels de tela) que a área onde ela aparece
+  useEffect(() => pc.onOverlayEnded(() => leaveWindow()), [])
+  // encaixa (e reencaixa se o Workland mudar de tamanho)
   useEffect(() => {
     if (!rect || !winId) return
-    const t = setTimeout(async () => {
-      const c = await pc.fit(winId, { x: rect.x, y: rect.y, width: rect.w, height: rect.h })
-      if (c) setCrop(c)
-    }, 60)
+    const t = setTimeout(() => pc.overlay(winId, { x: rect.x, y: rect.y, width: rect.w, height: rect.h }), 60)
     return () => clearTimeout(t)
   }, [winId, rect?.x, rect?.y, rect?.w, rect?.h]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // mouse e rodinha
+  // saiu do telão (Esc no mundo, Sair, outra tela): a janela volta pro lugar dela
   useEffect(() => {
-    const el = box.current
-    if (!el || !winId) return
-    const st = { down: new Set<number>(), raf: 0, last: { u: 0.5, v: 0.5 }, pending: null as null | { u: number; v: number }, lastClick: 0, lastAt: { u: 0, v: 0 } }
-    const uv = (e: MouseEvent) => {
-      const r = el.getBoundingClientRect()
-      return { u: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), v: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) }
-    }
-    const move = (e: PointerEvent) => {
-      st.last = uv(e)
-      st.pending = st.last
-      if (!st.raf)
-        st.raf = requestAnimationFrame(() => {
-          st.raf = 0
-          if (st.pending) pc.mouse(winId, { type: 'move', space: 'client', ...st.pending })
-          st.pending = null
-        })
-    }
-    const down = (e: PointerEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      const p = (st.last = uv(e))
-      const now = performance.now()
-      const dbl = e.button === 0 && now - st.lastClick < 450 && Math.hypot(p.u - st.lastAt.u, p.v - st.lastAt.v) < 0.01
-      st.lastClick = dbl ? 0 : now
-      st.lastAt = p
-      st.down.add(e.button)
-      el.setPointerCapture(e.pointerId)
-      pc.mouse(winId, { type: dbl ? 'dbl' : 'down', button: e.button, space: 'client', ...p })
-    }
-    const up = (e: PointerEvent) => {
-      if (!st.down.has(e.button)) return
-      st.down.delete(e.button)
-      pc.mouse(winId, { type: 'up', button: e.button, space: 'client', ...(st.last = uv(e)) })
-    }
-    const wheel = (e: WheelEvent) => {
-      e.preventDefault()
-      const k = e.deltaMode === 1 ? 40 : 1.2
-      const p = uv(e)
-      if (e.deltaY) pc.mouse(winId, { type: 'wheel', delta: -e.deltaY * k, space: 'client', ...p })
-      if (e.deltaX) pc.mouse(winId, { type: 'wheel', delta: e.deltaX * k, horizontal: true, space: 'client', ...p })
-    }
-    const menu = (e: Event) => e.preventDefault()
-    el.addEventListener('pointermove', move)
-    el.addEventListener('pointerdown', down)
-    el.addEventListener('pointerup', up)
-    el.addEventListener('wheel', wheel, { passive: false })
-    el.addEventListener('contextmenu', menu)
-    return () => {
-      cancelAnimationFrame(st.raf)
-      for (const b of st.down) pc.mouse(winId, { type: 'up', button: b, space: 'client', ...st.last })
-      el.removeEventListener('pointermove', move)
-      el.removeEventListener('pointerdown', down)
-      el.removeEventListener('pointerup', up)
-      el.removeEventListener('wheel', wheel)
-      el.removeEventListener('contextmenu', menu)
-    }
-  }, [winId, ready])
-
-  if (!rect) return null
-  const view = crop ? `inset(${crop.top * 100}% ${crop.right * 100}% ${crop.bottom * 100}% ${crop.left * 100}%)` : undefined
-  return (
-    <div className="liveview" ref={box} style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}>
-      <video ref={video} muted autoPlay playsInline style={{ ['objectViewBox' as string]: view }} />
-    </div>
-  )
+    if (!on) return
+    return () => void pc.overlayEnd()
+  }, [on, winId])
+  return null
 }
 
 function UsingBar() {
   const focus = useUI((s) => s.focus)
-  const sink = useRef<HTMLTextAreaElement>(null)
-  const on = focus?.phase === 'on'
-  const winId = focus?.winId
-
-  useEffect(() => {
-    if (!on || !winId) return
-    const el = sink.current!
-    const keep = () => setTimeout(() => useUI.getState().focus?.phase === 'on' && el.focus(), 0)
-    el.focus()
-    const isText = (e: KeyboardEvent) => e.key.length === 1 && (!(e.ctrlKey || e.altKey || e.metaKey) || e.getModifierState('AltGraph'))
-    const send = (e: KeyboardEvent, down: boolean) => {
-      if (MODIFIERS.has(e.key) || e.key === 'Dead' || e.key === 'Process') return
-      if (isText(e)) return
-      e.preventDefault()
-      pc.key(winId, { type: 'key', vk: e.keyCode, down, extended: EXTENDED.has(e.code), ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey })
-    }
-    const down = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        leaveWindow()
-        return
-      }
-      send(e, true)
-    }
-    const up = (e: KeyboardEvent) => send(e, false)
-    const input = () => {
-      if (el.value) pc.key(winId, { type: 'char', text: el.value })
-      el.value = ''
-    }
-    el.addEventListener('keydown', down)
-    el.addEventListener('keyup', up)
-    el.addEventListener('input', input)
-    el.addEventListener('blur', keep)
-    return () => {
-      el.removeEventListener('keydown', down)
-      el.removeEventListener('keyup', up)
-      el.removeEventListener('input', input)
-      el.removeEventListener('blur', keep)
-      el.blur()
-    }
-  }, [on, winId])
-
   if (!focus) return null
   return (
-    <>
-      <textarea ref={sink} className="key-sink" aria-hidden tabIndex={-1} autoComplete="off" spellCheck={false} />
-      <div className="focusbar">
-        {focus.icon ? <img src={focus.icon} alt="" /> : <span className="dot" />}
-        {focus.phase === 'in' && <>Indo pra {focus.title}...</>}
-        {focus.phase === 'on' && (
-          <>
-            Usando <b>{focus.title}</b>
-            <span className="sep" />
-            mouse, rolagem e teclado vão pro app · <kbd>Esc</kbd> volta pro mundo
-          </>
-        )}
-        {focus.phase === 'out' && <>Voltando...</>}
-        {focus.phase !== 'out' && (
-          <>
-            <button
-              onClick={() => {
-                const id = focus.winId
-                leaveWindow()
-                pc.focus(id)
-              }}
-            >
-              Abrir fora
-            </button>
-            <button className="primary" onClick={() => leaveWindow()}>
-              Sair
-            </button>
-          </>
-        )}
-      </div>
-    </>
+    <div className="focusbar">
+      {focus.icon ? <img src={focus.icon} alt="" /> : <span className="dot" />}
+      {focus.phase === 'in' && <>Indo pra {focus.title}...</>}
+      {focus.phase === 'on' && (
+        <>
+          Usando <b>{focus.title}</b>
+          <span className="sep" />
+          clique fora do app ou <kbd>Alt</kbd>+<kbd>Q</kbd> volta pro mundo
+        </>
+      )}
+      {focus.phase === 'out' && <>Voltando...</>}
+      {focus.phase !== 'out' && (
+        <>
+          <button
+            onClick={async () => {
+              const id = focus.winId
+              await pc.overlayEnd()
+              leaveWindow()
+              pc.focus(id)
+            }}
+          >
+            Abrir fora
+          </button>
+          <button className="primary" onClick={() => leaveWindow()}>
+            Sair
+          </button>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -752,7 +614,7 @@ export function Hud() {
         {pc.native && !apps.length && <span className="chip">lendo seus apps...</span>}
       </div>
       <Crosshair />
-      <LiveView />
+      <RealWindow />
       <UsingBar />
       {!focus && !dressing && <Prompt />}
       <Toast />

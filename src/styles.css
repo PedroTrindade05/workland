@@ -358,30 +358,6 @@ kbd {
   opacity: 0.6;
 }
 
-/* imagem nítida do app em uso, em cima do telão */
-.liveview {
-  position: absolute;
-  pointer-events: auto;
-  background: #000;
-  cursor: default;
-  animation: fade 0.25s ease-out;
-}
-.liveview video {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: fill;
-}
-
-/* campo escondido que recebe o texto digitado enquanto usa um app */
-.key-sink {
-  position: absolute;
-  left: -9999px;
-  top: 0;
-  width: 10px;
-  height: 10px;
-  opacity: 0;
-}
 .focusbar img {
   width: 18px;
   height: 18px;

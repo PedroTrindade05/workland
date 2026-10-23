@@ -26,6 +26,16 @@ contextBridge.exposeInMainWorld('pc', {
   focus: call('win:focus'),
   prepare: call('win:prepare'),
   fit: call('win:fit'),
+  overlay: call('win:overlay'),
+  overlayEnd: call('win:overlay-end'),
+  onOverlayEnded: (fn) => {
+    const h = (_e, reason) => fn(reason)
+    ipcRenderer.on('win:overlay-ended', h)
+    return () => ipcRenderer.removeListener('win:overlay-ended', h)
+  },
+  // só existem no modo de teste escondido
+  testWindow: call('test:window'),
+  testPlaced: call('test:placed'),
   mouse: (id, ev) => ipcRenderer.send('win:mouse', id, ev),
   key: (id, ev) => ipcRenderer.send('win:key', id, ev),
   onApps: (fn) => {

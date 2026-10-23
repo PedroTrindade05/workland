@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Billboard, RoundedBox } from '@react-three/drei'
+import { Billboard, RoundedBox, useGLTF } from '@react-three/drei'
+import { modelUrl } from '../world/assets'
 import * as THREE from 'three'
 import { useUI } from '../store'
 import { useRooms, type Item } from '../rooms'
@@ -13,7 +14,31 @@ const str = (v: unknown, d: string) => (typeof v === 'string' && v ? v : d)
 
 // ---------- planta ----------
 
+const PLANT_MODEL: Record<string, string> = { folhas: 'potted_plant_01', arvore: 'potted_plant_02', cacto: 'potted_plant_04' }
+
+function PlantModel({ id }: { id: string }) {
+  const { scene } = useGLTF(modelUrl(id))
+  const obj = useMemo(() => {
+    const c = scene.clone(true)
+    c.traverse((o) => {
+      const m = o as THREE.Mesh
+      if (m.isMesh) m.castShadow = m.receiveShadow = true
+    })
+    return c
+  }, [scene])
+  return <primitive object={obj} />
+}
+
 export function Plant({ item }: { item: Item }) {
+  const id = PLANT_MODEL[str(item.props.kind, 'folhas')] ?? PLANT_MODEL.folhas
+  return (
+    <Suspense fallback={<PlantSimple item={item} />}>
+      <PlantModel id={id} />
+    </Suspense>
+  )
+}
+
+function PlantSimple({ item }: { item: Item }) {
   const kind = str(item.props.kind, 'folhas')
   const leaves = useMemo(() => {
     let s = item.id.split('').reduce((a, c) => a + c.charCodeAt(0), 7)

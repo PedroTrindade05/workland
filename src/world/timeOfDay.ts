@@ -47,5 +47,5 @@ export function useLiveTheme() {
     const id = setInterval(() => setTick((t) => t + 1), 60_000)
     return () => clearInterval(id)
   }, [real])
-  return useMemo(() => (real && base.id !== 'orbita' ? atTime(base, new Date()) : base), [base, real, tick]) // eslint-disable-line react-hooks/exhaustive-deps
+  return useMemo(() => (real && !base.real ? atTime(base, new Date()) : base), [base, real, tick]) // eslint-disable-line react-hooks/exhaustive-deps
 }

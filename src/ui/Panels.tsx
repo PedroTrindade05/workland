@@ -297,7 +297,7 @@ function RoomsPanel() {
   const roomId = useRooms((s) => s.roomId)
   const [name, setName] = useState('')
   const [tpl, setTpl] = useState('escritorio')
-  const [theme, setTheme] = useState<ThemeId>('terraco')
+  const [theme, setTheme] = useState<ThemeId>('escritorio')
   const [editing, setEditing] = useState<string | null>(null)
   return (
     <Panel title="Salas">
@@ -628,7 +628,7 @@ export function Onboarding() {
   const [step, setStep] = useState(0)
   const [name, setName] = useState('')
   const [tpl, setTpl] = useState('escritorio')
-  const [theme, setTheme] = useState<ThemeId>('terraco')
+  const [theme, setTheme] = useState<ThemeId>('escritorio')
   const [controls, setControls] = useState<'simples' | 'jogo'>('simples')
   const steps = useMemo(() => ['Oi!', 'Sua primeira sala', 'Ambiente', 'Como andar', 'Pronto'], [])
   if (ready) return null

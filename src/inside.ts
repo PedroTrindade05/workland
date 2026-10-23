@@ -1,5 +1,5 @@
-// Abrir coisas DENTRO do mundo: cada janela vira um telão, e usar o telão manda
-// mouse e teclado pro app real, que fica escondido atrás do Workland.
+// Abrir coisas DENTRO do mundo: cada janela vira um telão, e usar o telão traz o app real
+// por cima do Workland, com a área útil encaixada exatamente em cima dele (ui/Hud.tsx, RealWindow).
 import type * as THREE from 'three'
 import { pc, type AppEntry, type Shortcut, type WinEntry } from './pc'
 import { useUI } from './store'

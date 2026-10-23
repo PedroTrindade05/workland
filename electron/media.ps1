@@ -1,6 +1,7 @@
 # O que está tocando no Windows (Spotify, YouTube no navegador, etc.) via controles de mídia do sistema.
-# -Cmd status|play|next|prev  ->  imprime JSON { title, artist, app, playing, art }
-param([string]$Cmd = 'status')
+# -Cmd status|play|next|prev  -ArtDir <pasta>  ->  imprime JSON { title, artist, album, app, playing, art, pos, dur, at }
+# A capa vai pra um arquivo em ArtDir (um por música) e só é lida da primeira vez.
+param([string]$Cmd = 'status', [string]$ArtDir = '')
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 try {
@@ -17,18 +18,46 @@ try {
     'prev' { Await ($s.TrySkipPreviousAsync()) ([bool]) | Out-Null; Start-Sleep -Milliseconds 500 }
   }
   $p = Await ($s.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
+
+  # capa: arquivo por música (nome = hash de título, artista, álbum e app)
   $art = $null
-  if ($p.Thumbnail) {
+  if ($ArtDir -and $p.Thumbnail) {
     try {
-      $stream = Await ($p.Thumbnail.OpenReadAsync()) ([Windows.Storage.Streams.IRandomAccessStreamWithContentType])
-      $net = [System.IO.WindowsRuntimeStreamExtensions]::AsStreamForRead($stream)
-      $ms = New-Object IO.MemoryStream
-      $net.CopyTo($ms)
-      $art = 'data:image/png;base64,' + [Convert]::ToBase64String($ms.ToArray())
+      $key = "$($p.Title)|$($p.Artist)|$($p.AlbumTitle)|$($s.SourceAppUserModelId)"
+      $md5 = [Security.Cryptography.MD5]::Create()
+      $hash = -join ($md5.ComputeHash([Text.Encoding]::UTF8.GetBytes($key)) | ForEach-Object { $_.ToString('x2') })
+      $file = Join-Path $ArtDir "$hash.img"
+      if (-not (Test-Path $file)) {
+        New-Item -ItemType Directory -Force -Path $ArtDir | Out-Null
+        [Windows.Storage.Streams.IRandomAccessStreamWithContentType, Windows.Storage.Streams, ContentType = WindowsRuntime] | Out-Null
+        [Windows.Storage.Streams.IInputStream, Windows.Storage.Streams, ContentType = WindowsRuntime] | Out-Null
+        $stream = Await ($p.Thumbnail.OpenReadAsync()) ([Windows.Storage.Streams.IRandomAccessStreamWithContentType])
+        # pela reflexão: o PowerShell não acha a sobrecarga de AsStreamForRead sozinho
+        $toNet = [System.IO.WindowsRuntimeStreamExtensions].GetMethod('AsStreamForRead', [Type[]]@([Windows.Storage.Streams.IInputStream]))
+        $net = $toNet.Invoke($null, @($stream))
+        $ms = New-Object IO.MemoryStream
+        $net.CopyTo($ms)
+        if ($ms.Length -gt 0) { [IO.File]::WriteAllBytes($file, $ms.ToArray()) }
+        # guarda só as 40 mais recentes
+        Get-ChildItem $ArtDir -Filter *.img | Sort-Object LastWriteTime -Descending | Select-Object -Skip 40 | Remove-Item -Force -ErrorAction SilentlyContinue
+      }
+      if (Test-Path $file) { $art = $file }
     } catch {}
   }
+
+  # linha do tempo (posição no momento da última atualização; a tela anda o resto sozinha)
+  $pos = $null; $dur = $null; $at = $null
+  try {
+    $t = $s.GetTimelineProperties()
+    if ($t.EndTime.TotalSeconds -gt 0) {
+      $pos = [math]::Round($t.Position.TotalSeconds, 1)
+      $dur = [math]::Round(($t.EndTime - $t.StartTime).TotalSeconds, 1)
+      $at = $t.LastUpdatedTime.ToUnixTimeMilliseconds()
+    }
+  } catch {}
+
   $playing = $s.GetPlaybackInfo().PlaybackStatus.ToString() -eq 'Playing'
-  [pscustomobject]@{ title = $p.Title; artist = $p.Artist; app = $s.SourceAppUserModelId; playing = $playing; art = $art } | ConvertTo-Json -Compress
+  [pscustomobject]@{ title = $p.Title; artist = $p.Artist; album = $p.AlbumTitle; app = $s.SourceAppUserModelId; playing = $playing; art = $art; pos = $pos; dur = $dur; at = $at } | ConvertTo-Json -Compress
 } catch {
   'null'
 }

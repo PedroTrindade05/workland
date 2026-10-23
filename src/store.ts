@@ -147,7 +147,8 @@ type UI = {
   sendHome: (id: string) => void
 }
 
-const initialTheme = load<ThemeId>('workland.theme', 'terraco')
+// tema salvo que saiu (Terraço, Lago) vira o padrão
+const initialTheme = themeById(load<string>('workland.theme', 'escritorio')).id
 
 export const useUI = create<UI>((set, get) => ({
   hover: null,
@@ -176,7 +177,7 @@ export const useUI = create<UI>((set, get) => ({
   theme: themeById(initialTheme),
   setTheme: (id) => {
     save('workland.theme', id)
-    set({ themeId: id, theme: themeById(id) })
+    set({ themeId: themeById(id).id, theme: themeById(id) })
   },
   view: load<'first' | 'third'>('workland.view', 'third'),
   toggleView: () => {

@@ -462,13 +462,27 @@ export function Todo({ item }: { item: Item }) {
 
 // ---------- tocando agora ----------
 
-const media = { data: null as Media | null, art: null as HTMLImageElement | null, users: 0, timer: 0, listeners: new Set<() => void>() }
-async function pollMedia() {
-  const d = await pc.media('status').catch(() => null)
+const media = {
+  data: null as Media | null,
+  art: null as HTMLImageElement | null,
+  artPath: null as string | null,
+  users: 0,
+  timer: 0,
+  listeners: new Set<() => void>(),
+}
+// a capa só recarrega quando o arquivo muda (o script guarda uma por música)
+async function setMedia(d: Media | null) {
+  const path = d?.art ?? null
+  if (path !== media.artPath) {
+    media.artPath = path
+    media.art = path ? await loadImage(pc.fileUrl(path)).catch(() => null) : null
+  }
   media.data = d
-  media.art = d?.art ? await loadImage(d.art).catch(() => null) : null
   media.listeners.forEach((f) => f())
 }
+const pollMedia = async () => setMedia(await pc.media('status').catch(() => null))
+// pros testes escondidos: forçar música sem capa, etc.
+Object.assign(window, { __media: { media, setMedia } })
 function useMedia() {
   const [, bump] = useState(0)
   useEffect(() => {
@@ -486,8 +500,116 @@ function useMedia() {
   return media
 }
 const mediaCmd = async (cmd: 'play' | 'next' | 'prev') => {
-  media.data = await pc.media(cmd).catch(() => media.data)
+  const d = await pc.media(cmd).catch(() => undefined)
+  if (d !== undefined) await setMedia(d)
   setTimeout(pollMedia, 600)
+}
+
+const SPOTIFY = '#1ED760'
+// logo do Spotify: círculo verde com as três ondas
+function spotifyLogo(g: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+  g.fillStyle = SPOTIFY
+  g.beginPath()
+  g.arc(cx, cy, r, 0, Math.PI * 2)
+  g.fill()
+  g.strokeStyle = '#000'
+  g.lineCap = 'round'
+  const waves: [number, number, number][] = [
+    [-0.3, 1.18, 0.17],
+    [0.04, 0.98, 0.14],
+    [0.34, 0.78, 0.11],
+  ]
+  for (const [dy, w, t] of waves) {
+    const y = cy + dy * r
+    const half = (w * r) / 2
+    g.lineWidth = t * r
+    g.beginPath()
+    g.moveTo(cx - half, y + 0.02 * r)
+    g.quadraticCurveTo(cx - 0.05 * r, y - 0.26 * r, cx + half * 0.96, y + 0.12 * r)
+    g.stroke()
+  }
+}
+// recorte quadrado do meio (capas de vídeo vêm 16:9)
+function drawCover(g: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
+  const k = Math.max(w / img.width, h / img.height)
+  const sw = w / k
+  const sh = h / k
+  g.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, x, y, w, h)
+}
+// fundo desfocado da capa, feito uma vez por capa e tamanho (blur no canvas é caro)
+const backdrops = new WeakMap<HTMLImageElement, HTMLCanvasElement>()
+function backdrop(img: HTMLImageElement | null, W: number, H: number) {
+  const hit = img && backdrops.get(img)
+  if (hit && hit.width === W && hit.height === H) return hit
+  const c = document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const g = c.getContext('2d')!
+  g.fillStyle = '#0b0c0e'
+  g.fillRect(0, 0, W, H)
+  if (img) {
+    g.filter = `blur(${Math.round(H * 0.09)}px) saturate(1.4)`
+    drawCover(g, img, -W * 0.15, -H * 0.6, W * 1.3, H * 2.2)
+    g.filter = 'none'
+    const sh = g.createLinearGradient(0, 0, W, 0)
+    sh.addColorStop(0, 'rgba(0,0,0,0.35)')
+    sh.addColorStop(1, 'rgba(0,0,0,0.7)')
+    g.fillStyle = sh
+    g.fillRect(0, 0, W, H)
+    backdrops.set(img, c)
+  } else {
+    const glowG = g.createRadialGradient(H * 0.5, H * 0.5, 0, H * 0.5, H * 0.5, W * 0.7)
+    glowG.addColorStop(0, 'rgba(30,215,96,0.16)')
+    glowG.addColorStop(1, 'rgba(30,215,96,0)')
+    g.fillStyle = glowG
+    g.fillRect(0, 0, W, H)
+  }
+  return c
+}
+// encolhe até 70% do tamanho e, se ainda não couber, corta com reticências
+function fitLine(g: CanvasRenderingContext2D, text: string, max: number, weight: number, size: number) {
+  let s = size
+  const font = () => (g.font = `${weight} ${s}px ${FONT}`)
+  font()
+  while (g.measureText(text).width > max && s > size * 0.7) {
+    s -= 2
+    font()
+  }
+  if (g.measureText(text).width <= max) return text
+  let t = text
+  while (t.length > 1 && g.measureText(t + '…').width > max) t = t.slice(0, -1)
+  return t.trimEnd() + '…'
+}
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+// posição agora: o Windows manda onde estava e quando mediu, o resto anda aqui
+function position(d: Media) {
+  if (d.pos == null || !d.dur) return null
+  const p = d.playing && d.at ? d.pos + (Date.now() - d.at) / 1000 : d.pos
+  return Math.min(Math.max(p, 0), d.dur)
+}
+function playIcon(g: CanvasRenderingContext2D, cx: number, cy: number, s: number, playing: boolean) {
+  g.beginPath()
+  if (playing) {
+    g.roundRect(cx - s * 0.42, cy - s * 0.5, s * 0.3, s, s * 0.06)
+    g.roundRect(cx + s * 0.12, cy - s * 0.5, s * 0.3, s, s * 0.06)
+  } else {
+    g.moveTo(cx - s * 0.32, cy - s * 0.52)
+    g.lineTo(cx + s * 0.5, cy)
+    g.lineTo(cx - s * 0.32, cy + s * 0.52)
+    g.closePath()
+  }
+  g.fill()
+}
+function skipIcon(g: CanvasRenderingContext2D, cx: number, cy: number, s: number, dir: 1 | -1) {
+  g.beginPath()
+  g.moveTo(cx - dir * s * 0.45, cy - s * 0.5)
+  g.lineTo(cx + dir * s * 0.3, cy)
+  g.lineTo(cx - dir * s * 0.45, cy + s * 0.5)
+  g.closePath()
+  g.fill()
+  g.beginPath()
+  g.roundRect(cx + dir * s * 0.3 - (dir > 0 ? 0 : s * 0.16), cy - s * 0.5, s * 0.16, s, s * 0.04)
+  g.fill()
 }
 
 export function Music({ item }: { item: Item }) {
@@ -498,45 +620,146 @@ export function Music({ item }: { item: Item }) {
       item={item}
       w={2.6}
       h={1.1}
-      px={768}
-      deps={[d?.title, d?.artist, d?.playing, m.art]}
+      px={1024}
+      // tocando: redesenha pra barra andar e o equalizador mexer; pausado fica parado
+      every={d?.playing ? 180 : 0}
+      deps={[d?.title, d?.artist, d?.album, d?.playing, d?.pos, d?.dur, m.art]}
       target={{ id: `music:${item.id}`, title: d?.title || 'Tocando agora', verb: d?.playing ? 'Pausar' : 'Tocar', run: () => mediaCmd('play'), alt: { verb: 'Próxima', run: () => mediaCmd('next') } }}
-      draw={(g, W, H, theme) => {
-        const pad = H * 0.14
+      draw={(g, W, H, theme, hovered) => {
+        const R = W * 0.05
+        g.save()
+        g.beginPath()
+        g.roundRect(3, 3, W - 6, H - 6, R)
+        g.clip()
+        g.drawImage(backdrop(m.art, W, H), 0, 0)
+        g.restore()
+
+        // capa (ou quadrado preto com a logo do Spotify)
+        const pad = H * 0.12
         const s = H - pad * 2
+        g.save()
+        g.shadowColor = 'rgba(0,0,0,0.55)'
+        g.shadowBlur = H * 0.08
+        g.shadowOffsetY = H * 0.025
+        g.fillStyle = '#000'
+        g.beginPath()
+        g.roundRect(pad, pad, s, s, H * 0.045)
+        g.fill()
+        g.restore()
         if (m.art) {
           g.save()
           g.beginPath()
-          g.roundRect(pad, pad, s, s, 18)
+          g.roundRect(pad, pad, s, s, H * 0.045)
           g.clip()
-          g.drawImage(m.art, pad, pad, s, s)
+          drawCover(g, m.art, pad, pad, s, s)
           g.restore()
-        } else {
-          g.fillStyle = theme.dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'
-          g.beginPath()
-          g.roundRect(pad, pad, s, s, 18)
-          g.fill()
-          g.fillStyle = theme.accent
-          g.font = `300 ${s * 0.5}px ${FONT}`
-          g.textAlign = 'center'
-          g.textBaseline = 'middle'
-          g.fillText('♪', pad + s / 2, pad + s / 2)
-        }
+        } else spotifyLogo(g, pad + s / 2, pad + s / 2, s * 0.26)
+
         const x = pad * 2 + s
-        const maxW = W - x - pad
+        const right = W - pad
+        const maxW = right - x
+        const playing = !!d?.playing
         g.textAlign = 'left'
         g.textBaseline = 'alphabetic'
-        g.fillStyle = theme.card.sub
-        g.font = `500 ${H * 0.1}px ${FONT}`
-        g.fillText(d ? (d.playing ? 'TOCANDO AGORA' : 'PAUSADO') : 'NADA TOCANDO', x, H * 0.3)
-        g.fillStyle = theme.card.text
-        fitText(g, d?.title || 'Abra o Spotify ou um vídeo', maxW, 500, H * 0.17)
-        g.fillText(d?.title || 'Abra o Spotify ou um vídeo', x, H * 0.55)
-        g.fillStyle = theme.card.sub
-        fitText(g, d?.artist || '', maxW, 400, H * 0.12)
-        g.fillText(d?.artist || '', x, H * 0.72)
-        g.font = `400 ${H * 0.085}px ${FONT}`
-        g.fillText('E tocar/pausar · F próxima', x, H * 0.88)
+
+        // rótulo + logo pequena + equalizador
+        const ly = H * 0.2
+        spotifyLogo(g, x + H * 0.03, ly - H * 0.02, H * 0.03)
+        g.fillStyle = 'rgba(255,255,255,0.7)'
+        g.font = `600 ${H * 0.05}px ${FONT}`
+        g.letterSpacing = `${H * 0.006}px`
+        g.fillText(d ? (playing ? 'TOCANDO AGORA' : 'PAUSADO') : 'NADA TOCANDO', x + H * 0.085, ly)
+        g.letterSpacing = '0px'
+        const t = performance.now() / 1000
+        const bw = H * 0.016
+        for (let i = 0; i < 4; i++) {
+          const k = playing ? 0.35 + 0.65 * Math.abs(Math.sin(t * (2.1 + i * 0.7) + i * 1.7)) : 0.25
+          const bh = H * 0.065 * k
+          g.fillStyle = playing ? SPOTIFY : 'rgba(255,255,255,0.35)'
+          g.beginPath()
+          g.roundRect(right - (4 - i) * bw * 1.8, ly - bh, bw, bh, bw / 2)
+          g.fill()
+        }
+
+        // título, artista, álbum
+        const title = d?.title || 'Abra o Spotify ou um vídeo'
+        g.fillStyle = '#fff'
+        g.fillText(fitLine(g, title, maxW, 650, H * 0.12), x, H * 0.37)
+        g.fillStyle = 'rgba(255,255,255,0.78)'
+        g.fillText(fitLine(g, d?.artist || (d ? '' : 'a música aparece aqui'), maxW, 400, H * 0.072), x, H * 0.47)
+        if (d?.album && d.album !== d.title) {
+          g.fillStyle = 'rgba(255,255,255,0.48)'
+          g.fillText(fitLine(g, d.album, maxW, 400, H * 0.056), x, H * 0.555)
+        }
+
+        // barra de progresso
+        const p = d ? position(d) : null
+        const by = H * 0.635
+        const bh = H * 0.014
+        g.fillStyle = 'rgba(255,255,255,0.18)'
+        g.beginPath()
+        g.roundRect(x, by - bh / 2, maxW, bh, bh / 2)
+        g.fill()
+        if (p != null && d?.dur) {
+          const f = p / d.dur
+          g.fillStyle = '#fff'
+          g.beginPath()
+          g.roundRect(x, by - bh / 2, Math.max(bh, maxW * f), bh, bh / 2)
+          g.fill()
+          g.beginPath()
+          g.arc(x + maxW * f, by, bh * 1.3, 0, Math.PI * 2)
+          g.fill()
+          g.fillStyle = 'rgba(255,255,255,0.55)'
+          g.font = `500 ${H * 0.045}px ${FONT}`
+          g.fillText(clock(p), x, H * 0.715)
+          g.textAlign = 'right'
+          g.fillText(clock(d.dur), right, H * 0.715)
+          g.textAlign = 'left'
+        }
+
+        // controles (E toca/pausa, F próxima)
+        const cy = H * 0.82
+        const cr = H * 0.068
+        const cx = x + cr
+        g.fillStyle = '#fff'
+        g.beginPath()
+        g.arc(cx, cy, cr, 0, Math.PI * 2)
+        g.fill()
+        g.fillStyle = '#000'
+        playIcon(g, cx + (playing ? 0 : cr * 0.06), cy, cr * 0.8, playing)
+        g.fillStyle = 'rgba(255,255,255,0.85)'
+        skipIcon(g, cx + cr * 2.3, cy, cr * 0.72, 1)
+        const key = (k: string, kx: number, label: string) => {
+          g.font = `600 ${H * 0.042}px ${FONT}`
+          const kw = H * 0.075
+          g.strokeStyle = 'rgba(255,255,255,0.4)'
+          g.lineWidth = 2
+          g.beginPath()
+          g.roundRect(kx, cy - kw / 2, kw, kw, H * 0.014)
+          g.stroke()
+          g.fillStyle = 'rgba(255,255,255,0.85)'
+          g.textAlign = 'center'
+          g.fillText(k, kx + kw / 2, cy + H * 0.015)
+          g.textAlign = 'left'
+          g.fillStyle = 'rgba(255,255,255,0.55)'
+          g.font = `400 ${H * 0.045}px ${FONT}`
+          g.fillText(label, kx + kw + H * 0.02, cy + H * 0.016)
+          return kx + kw + H * 0.02 + g.measureText(label).width
+        }
+        const hintW = (() => {
+          g.font = `400 ${H * 0.045}px ${FONT}`
+          return H * 0.075 * 2 + H * 0.02 * 2 + H * 0.05 + g.measureText(playing ? 'pausar' : 'tocar').width + g.measureText('próxima').width
+        })()
+        const after = key('E', right - hintW, playing ? 'pausar' : 'tocar')
+        key('F', after + H * 0.05, 'próxima')
+
+        if (hovered) {
+          g.strokeStyle = theme.accent
+          g.lineWidth = 6
+          g.beginPath()
+          g.roundRect(3, 3, W - 6, H - 6, R)
+          g.stroke()
+        }
       }}
     />
   )

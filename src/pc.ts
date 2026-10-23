@@ -8,7 +8,8 @@ export type FsItem = { name: string; path: string; isDir: boolean; size: number;
 export type FsListing = { dir: string; parent?: string | null; items: FsItem[]; error?: string }
 export type WinEntry = { id: string; name: string; icon: string | null; minimized?: boolean; exe?: string | null }
 export type MouseEv = { type: 'move' | 'down' | 'up' | 'dbl' | 'wheel'; u: number; v: number; button?: number; delta?: number; horizontal?: boolean; space?: 'client' }
-export type Media = { title: string; artist: string; app: string; playing: boolean; art: string | null }
+// art = arquivo da capa no cache; pos/dur em segundos, at = quando a posição foi medida (ms)
+export type Media = { title: string; artist: string; album?: string; app: string; playing: boolean; art: string | null; pos?: number | null; dur?: number | null; at?: number | null }
 export type PluginInfo = { id: string; name: string; url: string }
 export type Setup = Record<string, unknown>
 export type UpdateInfo = { version: string }
@@ -49,6 +50,10 @@ type Bridge = {
   focus(id: string): Promise<boolean>
   prepare(id: string): Promise<boolean>
   fit(id: string, rect: { x: number; y: number; width: number; height: number }): Promise<Crop | null>
+  // janela de verdade por cima do Workland, com a área útil exatamente em rect (px CSS)
+  overlay(id: string, rect: { x: number; y: number; width: number; height: number }): Promise<unknown>
+  overlayEnd(): Promise<void>
+  onOverlayEnded(fn: (reason: string) => void): () => void
   mouse(id: string, ev: MouseEv): void
   key(id: string, ev: KeyEv): void
   onApps(fn: (d: { apps: AppEntry[]; icons: Record<string, string> }) => void): () => void
@@ -132,6 +137,9 @@ const mock: Bridge = {
   focus: async () => true,
   prepare: async () => true,
   fit: async () => null,
+  overlay: async () => null,
+  overlayEnd: async () => {},
+  onOverlayEnded: () => () => {},
   mouse: () => {},
   key: () => {},
   onApps: () => () => {},

@@ -1,6 +1,6 @@
 // Processo principal: abre a janela do mundo e faz a ponte com o Windows
 // (atalhos da Área de Trabalho, apps do menu Iniciar, janelas abertas, status do sistema).
-const { app, BrowserWindow, Menu, ipcMain, shell, desktopCapturer, nativeImage, screen, dialog, protocol, net } = require('electron')
+const { app, BrowserWindow, Menu, ipcMain, shell, desktopCapturer, nativeImage, screen, dialog, protocol, net, globalShortcut } = require('electron')
 const { pathToFileURL } = require('url')
 
 // wlfile://local/C:/caminho -> arquivo local (fundo, quadros, plugins), com CORS liberado pra virar textura
@@ -67,8 +67,12 @@ function createWindow() {
     for (const ev of ['resize', 'maximize', 'unmaximize', 'restore', 'move', 'enter-full-screen', 'leave-full-screen']) win.on(ev, () => setTimeout(hole, 30))
   }
   // saiu do Workland (outro app ou fechou): as janelas usadas por dentro voltam como estavam
-  win.on('blur', () => win32.restoreTouched())
-  win.on('close', () => win32.restoreTouched())
+  // (usando um app por cima do telão o Workland perde o foco de propósito: quem cuida é o stopOverlay)
+  win.on('blur', () => !win32.overlayActive() && win32.restoreTouched())
+  win.on('close', () => {
+    stopOverlay('close')
+    win32.restoreTouched()
+  })
   if (DEV) win.loadURL('http://localhost:5199')
   else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   win.webContents.on('before-input-event', (_e, input) => {
@@ -503,7 +507,9 @@ ipcMain.handle('media', async (_e, cmd) => {
   // um de cada vez: o PowerShell leva ~1s
   if (mediaBusy && cmd === 'status') return mediaBusy
   const script = path.join(__dirname, 'media.ps1').replace('app.asar', 'app.asar.unpacked')
-  mediaBusy = run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Cmd', cmd], { timeout: 15000 })
+  // capas ficam em cache no perfil (uma por música)
+  const artDir = path.join(app.getPath('userData'), 'art-cache')
+  mediaBusy = run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Cmd', cmd, '-ArtDir', artDir], { timeout: 15000 })
     .then((out) => {
       try {
         return JSON.parse(out.trim() || 'null')
@@ -643,6 +649,53 @@ ipcMain.handle('win:fit', (_e, id, rect) => {
   const phys = screen.dipToScreenRect(win, { x: Math.round(cb.x + rect.x), y: Math.round(cb.y + rect.y), width: Math.round(rect.width), height: Math.round(rect.height) })
   return win32.fit(id, phys)
 })
+// a janela de verdade por cima do Workland, encaixada no telão. Volta pro mundo quando
+// clica fora dela (no Workland), aperta Alt+Q, troca pra outro app ou fecha o app.
+let overlayTimer = null
+function stopOverlay(reason) {
+  if (!overlayTimer && !win32.overlayActive()) return
+  clearInterval(overlayTimer)
+  overlayTimer = null
+  if (!OFFSCREEN) globalShortcut.unregister('Alt+Q')
+  win32.endOverlay()
+  if (!win || win.isDestroyed()) return
+  win.webContents.send('win:overlay-ended', reason)
+  // foi pra outro app: o resto que foi mexido volta também, e o Workland não rouba o foco
+  if (reason === 'other') win32.restoreTouched()
+  else if (reason !== 'close') win.focus()
+}
+ipcMain.handle('win:overlay', (_e, id, rect) => {
+  if (!win) return null
+  const cb = win.getContentBounds()
+  const phys = screen.dipToScreenRect(win, { x: Math.round(cb.x + rect.x), y: Math.round(cb.y + rect.y), width: Math.round(rect.width), height: Math.round(rect.height) })
+  // no teste escondido não traz nada pra frente nem fica vigiando o foco
+  const r = win32.overlay(id, phys, !OFFSCREEN)
+  if (r && !OFFSCREEN && !overlayTimer) {
+    globalShortcut.register('Alt+Q', () => stopOverlay('key'))
+    const me = worklandHwnd()
+    overlayTimer = setInterval(() => {
+      const st = win32.overlayState(me)
+      if (st !== 'app') stopOverlay(st)
+    }, 150)
+  }
+  return r ? { ...r, want: phys } : null
+})
+ipcMain.handle('win:overlay-end', () => stopOverlay('ui'))
+// teste escondido: uma janela minha, invisível, pra encaixar sem mexer nas janelas de ninguém
+if (OFFSCREEN) {
+  let testWin = null
+  ipcMain.handle('test:window', () => {
+    if (!testWin || testWin.isDestroyed()) {
+      testWin = new BrowserWindow({ show: false, x: 40, y: 40, width: 700, height: 500, title: 'Teste Workland' })
+      testWin.loadURL('data:text/html,<body style="background:%23246">teste')
+    }
+    return `window:${Number(testWin.getNativeWindowHandle().readBigUInt64LE(0))}:0`
+  })
+  ipcMain.handle('test:placed', (_e, id) => {
+    const h = win32.hwndOf(id)
+    return h ? { ...win32.placed(h), active: win32.overlayActive(), bounds: testWin?.getBounds() } : null
+  })
+}
 ipcMain.on('win:mouse', (_e, id, ev) => win32.mouse(id, ev))
 ipcMain.on('win:key', (_e, id, ev) => win32.key(id, ev))
 

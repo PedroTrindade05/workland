@@ -374,7 +374,8 @@ export function Player() {
       const b = 2 * (c.target.x * dx + c.target.z * dz)
       const cc = c.target.x ** 2 + c.target.z ** 2 - R * R
       const dist = a > 1e-4 ? Math.min(s.dist, (-b + Math.sqrt(Math.max(0, b * b - 4 * a * cc))) / (2 * a)) : s.dist
-      wantPos = tmp.set(c.target.x + dx * dist, Math.max(0.25, c.target.y + Math.sin(player.pitch) * dist), c.target.z + dz * dist)
+      const ceiling = (ui.theme.real?.ceiling ?? Infinity) - 0.6
+      wantPos = tmp.set(c.target.x + dx * dist, THREE.MathUtils.clamp(c.target.y + Math.sin(player.pitch) * dist, 0.25, ceiling), c.target.z + dz * dist)
       wantLook = c.target
       rate = 30
     }
